@@ -22,8 +22,8 @@ import {
   Star
 } from 'lucide-react'
 import { clsx } from 'clsx'
-import axios from 'axios'
 import toast from 'react-hot-toast'
+import { apiEndpoints } from '../utils/api'
 
 export default function DataUpload() {
   const navigate = useNavigate()
@@ -63,10 +63,6 @@ export default function DataUpload() {
   })
 
   const uploadFile = async (fileItem) => {
-    const formData = new FormData()
-    formData.append('file', fileItem.file)
-    formData.append('folder', 'uploads')
-
     try {
       setFiles(prev => prev.map(f => 
         f.id === fileItem.id 
@@ -74,11 +70,10 @@ export default function DataUpload() {
           : f
       ))
 
-      const response = await axios.post('/api/upload-file', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        },
-        onUploadProgress: (progressEvent) => {
+      const response = await apiEndpoints.uploadFile(
+        fileItem.file,
+        'uploads', // folder
+        (progressEvent) => {
           const progress = Math.round(
             (progressEvent.loaded * 100) / progressEvent.total
           )
@@ -88,7 +83,7 @@ export default function DataUpload() {
               : f
           ))
         }
-      })
+      )
 
       setFiles(prev => prev.map(f => 
         f.id === fileItem.id 
@@ -162,9 +157,7 @@ export default function DataUpload() {
 
     setIsAnalyzing(true)
     try {
-      const response = await axios.post('/api/analyze', {
-        query: query.trim()
-      })
+      const response = await apiEndpoints.askQuestion(query.trim())
       
       setAnalysisResult(response.data)
       toast.success('Analysis completed!')
