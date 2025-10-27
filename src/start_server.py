@@ -85,10 +85,6 @@ def main():
     if not check_dependencies():
         return 1
     
-    if not check_env_file():
-        print("\nSetup incomplete. Please configure your environment first.")
-        return 1
-    
     # Start server
     start_server()
     return 0
