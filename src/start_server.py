@@ -45,20 +45,6 @@ def check_env_file():
     elif env_file_parent.exists():
         env_file = env_file_parent
     
-    if env_file is None:
-        print("⚠️  .env file not found")
-        print("Please create a .env file with your AWS configuration:")
-        print("You can place it in the current directory or parent directory")
-        print("""
-# Example .env file content:
-AWS_ACCESS_KEY_ID=your_aws_access_key_id
-AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
-AWS_REGION=us-east-1
-S3_BUCKET_NAME=csv-upload-bucket
-DEBUG=true
-        """)
-        return False
-    
     print(f"✅ .env file found at: {env_file}")
     return True
 
