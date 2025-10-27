@@ -24,10 +24,11 @@ const getApiBaseUrl = () => {
 // Create axios instance with default config
 const api = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: import.meta.env.VITE_API_TIMEOUT || 30000,
+  timeout: import.meta.env.VITE_API_TIMEOUT || 120000, // Increased to 2 minutes for file uploads
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false, // Temporarily disabled for CORS debugging
 })
 
 // Log API URL for debugging (remove in production)

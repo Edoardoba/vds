@@ -50,22 +50,42 @@ def get_allowed_origins():
     if custom_domain:
         origins.append(custom_domain)
     
-    # Add common Vercel patterns
+    # Add common Vercel patterns for Banta project
+    # Note: Wildcards may not work, so we add explicit common patterns
     origins.extend([
-        "https://banta-*.vercel.app",  # Replace 'banta' with your project name
-        "https://your-project-name.vercel.app",  # UPDATE THIS
-        "https://your-custom-domain.com"  # UPDATE THIS if you have one
+        "https://vds-new.vercel.app",
+        "https://banta-dashboard.vercel.app",
+        "https://banta-frontend.vercel.app",
+        "https://banta.vercel.app"
     ])
+    
+    # For debugging: log all origins
+    logger.info(f"CORS Origins configured: {origins}")
     
     return origins
 
+# Temporarily allow all origins for debugging CORS issues
+# TODO: Restrict this once we identify the correct Vercel URL
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_allowed_origins(),
-    allow_credentials=True,
+    allow_origins=["*"],  # Temporarily permissive for debugging
+    allow_credentials=False,  # Must be False when allow_origins=["*"]
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Add request logging middleware for debugging CORS
+@app.middleware("http")
+async def log_requests(request, call_next):
+    origin = request.headers.get("origin")
+    method = request.method
+    url = str(request.url)
+    
+    if method == "OPTIONS":
+        logger.info(f"CORS Preflight: {method} {url} - Origin: {origin}")
+    
+    response = await call_next(request)
+    return response
 
 # Initialize S3 service
 s3_service = S3Service()
@@ -83,10 +103,20 @@ async def health_check():
     try:
         # Check S3 connection
         s3_status = await s3_service.check_connection()
+        
+        # Check environment variables
+        env_status = {
+            "aws_access_key": "✓" if settings.AWS_ACCESS_KEY_ID else "✗",
+            "aws_secret_key": "✓" if settings.AWS_SECRET_ACCESS_KEY else "✗", 
+            "s3_bucket": settings.S3_BUCKET_NAME or "not_set",
+            "aws_region": settings.AWS_REGION
+        }
+        
         return {
             "status": "healthy",
             "services": {
-                "s3": "connected" if s3_status else "disconnected"
+                "s3": "connected" if s3_status else "disconnected",
+                "environment": env_status
             },
             "timestamp": datetime.utcnow().isoformat()
         }

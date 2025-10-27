@@ -59,7 +59,7 @@ export default function DataUpload() {
     },
     multiple: true,
     maxFiles: 10,
-    maxSize: 100 * 1024 * 1024 // 100MB
+    maxSize: 50 * 1024 * 1024 // 50MB (reduced for better reliability)
   })
 
   const uploadFile = async (fileItem) => {
@@ -109,7 +109,17 @@ export default function DataUpload() {
       toast.success(`${fileItem.name} uploaded successfully!`)
 
     } catch (error) {
-      const errorMessage = error.response?.data?.detail || 'Upload failed'
+      let errorMessage = 'Upload failed'
+      
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        errorMessage = 'Upload timeout - try a smaller file or check your connection'
+      } else if (error.response?.status === 502) {
+        errorMessage = 'Server temporarily unavailable - please try again in a moment'
+      } else if (error.response?.status === 0 || error.message.includes('Network Error')) {
+        errorMessage = 'Network error - check if the server is running'
+      } else {
+        errorMessage = error.response?.data?.detail || error.message || 'Upload failed'
+      }
       
       setFiles(prev => prev.map(f => 
         f.id === fileItem.id 
