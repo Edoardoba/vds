@@ -14,8 +14,8 @@ import os
 from pathlib import Path
 from io import StringIO
 
-# Add current directory to path for imports
-sys.path.append(str(Path(__file__).parent))
+# Add src directory to path for imports
+sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from services.agent_service import AgentService
 from services.claude_service import ClaudeService
