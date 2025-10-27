@@ -1,16 +1,36 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
+// Get API base URL from environment variables or fallback
+const getApiBaseUrl = () => {
+  // For Vite, environment variables must be prefixed with VITE_
+  const envApiUrl = import.meta.env.VITE_API_BASE_URL
+  
+  if (envApiUrl) {
+    return envApiUrl
+  }
+  
+  // Fallback logic
+  if (import.meta.env.PROD) {
+    // Production environment - UPDATE THIS WITH YOUR RENDER URL
+    return 'https://your-api-service-name.onrender.com'
+  }
+  
+  // Development environment
+  return '/api'
+}
+
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: process.env.NODE_ENV === 'production' 
-    ? 'https://your-api-service-name.onrender.com'  // 👈 UPDATE THIS WITH YOUR RENDER URL
-    : '/api',
-  timeout: 30000,
+  baseURL: getApiBaseUrl(),
+  timeout: import.meta.env.VITE_API_TIMEOUT || 30000,
   headers: {
     'Content-Type': 'application/json',
   },
 })
+
+// Log API URL for debugging (remove in production)
+console.log('🔗 API Base URL:', getApiBaseUrl())
 
 // Request interceptor
 api.interceptors.request.use(

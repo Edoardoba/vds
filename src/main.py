@@ -22,17 +22,48 @@ app = FastAPI(
 )
 
 # Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+import os
+
+# Dynamic CORS origins based on environment
+def get_allowed_origins():
+    """Get allowed CORS origins based on environment"""
+    # Base origins for development
+    origins = [
         "http://localhost:3000",
         "http://localhost:3001", 
         "http://localhost:3002",
-        "https://your-frontend-domain.onrender.com",  # Update with your frontend URL
-        "https://your-custom-domain.com"  # Update with your custom domain if any
-    ],
+        "http://localhost:3003",
+        "http://localhost:3004",
+        "http://localhost:3005",
+        "http://localhost:3006",
+    ]
+    
+    # Add production origins from environment variables
+    vercel_url = os.getenv("VERCEL_URL")
+    frontend_url = os.getenv("FRONTEND_URL") 
+    custom_domain = os.getenv("CUSTOM_DOMAIN")
+    
+    if vercel_url:
+        origins.append(f"https://{vercel_url}")
+    if frontend_url:
+        origins.append(frontend_url)
+    if custom_domain:
+        origins.append(custom_domain)
+    
+    # Add common Vercel patterns
+    origins.extend([
+        "https://banta-*.vercel.app",  # Replace 'banta' with your project name
+        "https://your-project-name.vercel.app",  # UPDATE THIS
+        "https://your-custom-domain.com"  # UPDATE THIS if you have one
+    ])
+    
+    return origins
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
