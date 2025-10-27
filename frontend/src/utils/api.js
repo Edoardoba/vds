@@ -12,8 +12,9 @@ const getApiBaseUrl = () => {
   
   // Fallback logic
   if (import.meta.env.PROD) {
-    // Production environment - UPDATE THIS WITH YOUR RENDER URL
-    return 'https://your-api-service-name.onrender.com'
+    // Production environment - This should be set via VITE_API_BASE_URL in Vercel
+    // Fallback to a generic pattern if env var is not set
+    return 'https://your-render-app-name.onrender.com'
   }
   
   // Development environment
