@@ -174,7 +174,7 @@ export default function Dashboard() {
               Welcome to Banta Intelligence Platform
             </h3>
             <p className="text-gray-600 mb-4">
-              Upload your CSV data and ask intelligent questions to get instant insights. 
+              Upload your data and ask intelligent questions to get instant insights. 
               Our AI-powered analysis helps you understand your data like never before.
             </p>
             <div className="flex flex-wrap gap-3">

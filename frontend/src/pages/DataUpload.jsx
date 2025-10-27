@@ -16,7 +16,10 @@ import {
   Zap,
   TrendingUp,
   BarChart3,
-  PieChart
+  PieChart,
+  Send,
+  MessageCircle,
+  Star
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import axios from 'axios'
@@ -27,6 +30,10 @@ export default function DataUpload() {
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState([])
+  const [showPrompt, setShowPrompt] = useState(false)
+  const [query, setQuery] = useState('')
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState(null)
 
   const onDrop = useCallback((acceptedFiles) => {
     const newFiles = acceptedFiles.map(file => ({
@@ -46,12 +53,13 @@ export default function DataUpload() {
     onDrop,
     accept: {
       'text/csv': ['.csv'],
-      'application/vnd.ms-excel': ['.csv'],
+      'application/vnd.ms-excel': ['.csv', '.xls'],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'text/plain': ['.csv']
     },
     multiple: true,
     maxFiles: 10,
-    maxSize: 50 * 1024 * 1024 // 50MB
+    maxSize: 100 * 1024 * 1024 // 100MB
   })
 
   const uploadFile = async (fileItem) => {
@@ -66,7 +74,7 @@ export default function DataUpload() {
           : f
       ))
 
-      const response = await axios.post('/api/upload-csv', formData, {
+      const response = await axios.post('/api/upload-file', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         },
@@ -88,11 +96,20 @@ export default function DataUpload() {
           : f
       ))
 
-      setUploadedFiles(prev => [...prev, {
-        ...response.data.file_details,
-        id: fileItem.id,
-        uploadedAt: new Date().toISOString()
-      }])
+      setUploadedFiles(prev => {
+        const newUploadedFiles = [...prev, {
+          ...response.data.file_details,
+          id: fileItem.id,
+          uploadedAt: new Date().toISOString()
+        }]
+        
+        // If this is the first successful upload, show prompt interface
+        if (newUploadedFiles.length === 1) {
+          setShowPrompt(true)
+        }
+        
+        return newUploadedFiles
+      })
 
       toast.success(`${fileItem.name} uploaded successfully!`)
 
@@ -136,6 +153,37 @@ export default function DataUpload() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
+  const handleAnalysis = async (e) => {
+    e.preventDefault()
+    if (!query.trim()) {
+      toast.error('Please enter your analysis request')
+      return
+    }
+
+    setIsAnalyzing(true)
+    try {
+      const response = await axios.post('/api/analyze', {
+        query: query.trim()
+      })
+      
+      setAnalysisResult(response.data)
+      toast.success('Analysis completed!')
+    } catch (error) {
+      const errorMessage = error.response?.data?.detail || 'Analysis failed'
+      toast.error(errorMessage)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const resetToUpload = () => {
+    setShowPrompt(false)
+    setFiles([])
+    setUploadedFiles([])
+    setQuery('')
+    setAnalysisResult(null)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Navigation */}
@@ -153,28 +201,28 @@ export default function DataUpload() {
               Banta
             </span>
           </motion.div>
+          
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-full text-indigo-700 text-sm font-medium"
+          >
+            <Sparkles className="w-4 h-4" />
+            Your Deeply Skilled Data Assistant
+          </motion.div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <div className="px-6 pt-12 pb-20">
+      <div className="px-6 pt-4 pb-8">
         <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
-            className="text-center mb-16"
+            className="text-center mb-8"
           >
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-full text-indigo-700 text-sm font-medium mb-6"
-            >
-              <Sparkles className="w-4 h-4" />
-              Your Deeply Skilled Data Assistant
-            </motion.div>
-            
             <h1 className="text-6xl md:text-7xl font-black mb-6">
               <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
                 Transform Data
@@ -184,31 +232,11 @@ export default function DataUpload() {
             </h1>
             
             <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8 leading-relaxed">
-              Upload your CSV files and ask natural language questions. Banta's AI-powered engine 
-              will analyze your data and provide <span className="font-semibold text-indigo-600">instant, actionable insights</span> 
-              that drive real business decisions.
+              Upload your CSV and Excel files and ask natural language questions.<br /> Banta's AI-powered engine 
+              will analyze your data and provide <span className="font-semibold text-indigo-600">instant, actionable insights </span>  
+               that drive real business decisions.
             </p>
 
-            {/* Feature Highlights */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="flex flex-wrap justify-center gap-8 mb-12"
-            >
-              <div className="flex items-center gap-2 text-gray-700">
-                <Zap className="w-5 h-5 text-yellow-500" />
-                <span className="font-medium">Instant Analysis</span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-700">
-                <TrendingUp className="w-5 h-5 text-green-500" />
-                <span className="font-medium">Predictive Insights</span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-700">
-                <BarChart3 className="w-5 h-5 text-blue-500" />
-                <span className="font-medium">Beautiful Visualizations</span>
-              </div>
-            </motion.div>
           </motion.div>
           {/* Upload Controls */}
           {files.length > 0 && (
@@ -242,20 +270,22 @@ export default function DataUpload() {
                 ) : (
                   <>
                     <Upload className="w-4 h-4 mr-2" />
-                    Upload & Analyze
+                    Upload Data
                   </>
                 )}
               </motion.button>
             </motion.div>
           )}
 
-          {/* Premium Upload Area */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="max-w-4xl mx-auto"
-          >
+          {/* Conditional Content: Upload or Prompt Interface */}
+          {!showPrompt ? (
+            /* Premium Upload Area */
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="max-w-4xl mx-auto"
+            >
             <motion.div
               {...getRootProps()}
               className={clsx(
@@ -353,18 +383,101 @@ export default function DataUpload() {
                       Ready to unlock your data's potential?
                     </h3>
                     <p className="text-gray-600 text-lg mb-6">
-                      Drop your CSV files here or click to browse
+                      Drop your files here or click to browse
                     </p>
                     
                     <div className="inline-flex items-center gap-3 px-6 py-3 bg-white/80 backdrop-blur-sm rounded-xl text-gray-600 text-sm font-medium border border-gray-200">
                       <FileText className="w-5 h-5 text-indigo-500" />
-                      <span>Supports CSV files up to 50MB each</span>
+                      <span>Supports files up to 50MB each</span>
                     </div>
                   </motion.div>
                 )}
               </div>
             </motion.div>
-          </motion.div>
+            </motion.div>
+          ) : (
+            /* Premium Prompt Interface */
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 200 }}
+              className="max-w-4xl mx-auto"
+            >
+              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-2xl overflow-hidden">
+                <div className="p-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                        <Brain className="w-6 h-6 text-white" />
+                      </div>
+                      <h2 className="text-2xl font-bold text-gray-900">Ask Banta Anything</h2>
+                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={resetToUpload}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors text-sm"
+                    >
+                      Upload New Files
+                    </motion.button>
+                  </div>
+
+                  <form onSubmit={handleAnalysis} className="space-y-6">
+                    <div>
+                      <label htmlFor="query" className="block text-lg font-semibold text-gray-900 mb-3">
+                        What insights do you need from your data?
+                      </label>
+                      <div className="relative">
+                        <textarea
+                          id="query"
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          rows={4}
+                          className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 placeholder:text-gray-400 resize-none bg-gray-50/50"
+                          placeholder="Ask me anything about your uploaded data... 
+
+Try: 'Show me which products are trending upward this quarter' or 'What patterns do you see in customer behavior?'"
+                          disabled={isAnalyzing}
+                        />
+                        <div className="absolute bottom-4 right-4">
+                          <motion.div
+                            animate={{ rotate: [0, 360] }}
+                            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                            className="w-6 h-6 text-indigo-300"
+                          >
+                            <Sparkles className="w-6 h-6" />
+                          </motion.div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-center">
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        type="submit"
+                        disabled={isAnalyzing || !query.trim()}
+                        className="px-12 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-lg font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+                      >
+                        {isAnalyzing ? (
+                          <>
+                            <Loader className="w-5 h-5 animate-spin" />
+                            Banta is analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <Brain className="w-5 h-5" />
+                            Ask Banta
+                            <Send className="w-5 h-5" />
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </div>
       </div>
 
@@ -483,8 +596,95 @@ export default function DataUpload() {
         )}
       </AnimatePresence>
 
-      {/* Success State - Ready for Analysis */}
-      {uploadedFiles.length > 0 && (
+      {/* Analysis Results */}
+      {analysisResult && (
+        <div className="px-6 pb-12">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 200 }}
+              className="bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500 rounded-2xl shadow-2xl overflow-hidden mb-6"
+            >
+              <div className="p-6 text-center">
+                <div className="flex items-center justify-center gap-3 text-white">
+                  <motion.div
+                    animate={{ rotate: [0, 360] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  >
+                    <CheckCircle className="w-8 h-8" />
+                  </motion.div>
+                  <h3 className="text-2xl font-bold">
+                    Banta has analyzed your data!
+                  </h3>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-2xl overflow-hidden"
+            >
+              <div className="p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                    <BarChart3 className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900">Analysis Results</h3>
+                </div>
+                
+                <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-100">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed overflow-x-auto">
+                    {JSON.stringify(analysisResult, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature Highlights - Only show in upload mode */}
+      {!showPrompt && files.length === 0 && (
+        <div className="px-6 pb-8">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.8 }}
+              className="text-center"
+            >
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">
+                Why choose Banta for your data analysis?
+              </h3>
+              <div className="flex flex-wrap justify-center gap-8">
+                <div className="flex items-center gap-3 text-gray-700">
+                  <div className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg flex items-center justify-center">
+                    <Zap className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="font-semibold">Instant Analysis</span>
+                </div>
+                <div className="flex items-center gap-3 text-gray-700">
+                  <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-emerald-500 rounded-lg flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="font-semibold">Predictive Insights</span>
+                </div>
+                <div className="flex items-center gap-3 text-gray-700">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-lg flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="font-semibold">Beautiful Visualizations</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
+
+      {/* Success State - Ready for Analysis - Only show in upload mode */}
+      {!showPrompt && uploadedFiles.length > 0 && (
         <div className="px-6 pb-12">
           <div className="max-w-4xl mx-auto">
             <motion.div
@@ -535,7 +735,7 @@ export default function DataUpload() {
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => navigate('/analysis')}
+                    onClick={() => setShowPrompt(true)}
                     className="px-8 py-4 bg-white text-green-600 rounded-xl font-bold hover:bg-green-50 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-3"
                   >
                     <Brain className="w-5 h-5" />
@@ -549,8 +749,8 @@ export default function DataUpload() {
         </div>
       )}
 
-      {/* Premium Guidelines & Features */}
-      {uploadedFiles.length === 0 && (
+      {/* Premium Guidelines & Features - Only show in upload mode */}
+      {!showPrompt && uploadedFiles.length === 0 && (
         <div className="px-6 pb-12">
           <div className="max-w-6xl mx-auto">
             <motion.div

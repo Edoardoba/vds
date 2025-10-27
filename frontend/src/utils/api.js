@@ -50,8 +50,24 @@ export const apiEndpoints = {
   // Health check
   health: () => api.get('/health'),
   
-  // File upload
+  // File upload (CSV and Excel)
   uploadFile: (file, folder = null, onUploadProgress) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (folder) {
+      formData.append('folder', folder)
+    }
+    
+    return api.post('/upload-file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress,
+    })
+  },
+  
+  // Legacy CSV upload (for backward compatibility)
+  uploadCSV: (file, folder = null, onUploadProgress) => {
     const formData = new FormData()
     formData.append('file', file)
     if (folder) {

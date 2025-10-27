@@ -5,19 +5,20 @@ import uvicorn
 from typing import Optional
 import logging
 from datetime import datetime
+from io import BytesIO
 
 from config import settings
 from services.s3_service import S3Service
-from utils.validators import validate_csv_file
+from utils.validators import validate_data_file
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="CSV Upload Service",
-    description="A FastAPI service for uploading CSV files to S3",
-    version="1.0.0"
+    title="Data Upload Service", 
+    description="A FastAPI service for uploading CSV and Excel files to S3",
+    version="2.0.0"
 )
 
 # Add CORS middleware
@@ -64,24 +65,34 @@ async def health_check():
         )
 
 
-@app.post("/upload-csv")
-async def upload_csv(
+@app.post("/upload-file")
+async def upload_file(
     file: UploadFile = File(...),
     folder: Optional[str] = None
 ):
     """
-    Upload a CSV file to S3 bucket
+    Upload a data file (CSV, XLSX, XLS) to S3 bucket
     
     Args:
-        file: CSV file to upload
+        file: Data file to upload (CSV, XLSX, or XLS)
         folder: Optional folder path in S3 bucket
     
     Returns:
-        Success message with file details
+        Success message with file details and validation metadata
     """
     try:
-        # Validate file
-        await validate_csv_file(file)
+        # Read file content first (to preserve it before validation consumes it)
+        await file.seek(0)
+        file_content = await file.read()
+        
+        if not file_content:
+            raise ValueError("File is empty")
+        
+        # Reset file pointer for validation
+        await file.seek(0)
+        
+        # Validate file and get metadata
+        validation_result = await validate_data_file(file)
         
         # Generate unique filename with timestamp
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -92,12 +103,12 @@ async def upload_csv(
         # Construct S3 key
         s3_key = f"{folder}/{unique_filename}" if folder else unique_filename
         
-        # Reset file pointer to beginning
-        await file.seek(0)
+        # Create a new BytesIO object with the file content for S3 upload
+        file_for_upload = BytesIO(file_content)
         
         # Upload to S3
         upload_result = await s3_service.upload_file(
-            file_obj=file.file,
+            file_obj=file_for_upload,
             key=s3_key,
             content_type=file.content_type or "text/csv"
         )
@@ -111,9 +122,10 @@ async def upload_csv(
                 "s3_key": s3_key,
                 "bucket": settings.S3_BUCKET_NAME,
                 "upload_timestamp": datetime.utcnow().isoformat(),
-                "file_size": file.size if hasattr(file, 'size') else None,
+                "file_size": len(file_content),
                 "content_type": file.content_type
             },
+            "validation_result": validation_result,
             "s3_response": upload_result
         }
         
@@ -129,6 +141,19 @@ async def upload_csv(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload file: {str(e)}"
         )
+
+
+# Backward compatibility endpoint
+@app.post("/upload-csv")
+async def upload_csv_legacy(
+    file: UploadFile = File(...),
+    folder: Optional[str] = None
+):
+    """
+    Legacy CSV upload endpoint (redirects to /upload-file)
+    Maintained for backward compatibility
+    """
+    return await upload_file(file, folder)
 
 
 @app.get("/list-files")

@@ -4,15 +4,19 @@ from typing import Optional
 # Handle Pydantic v2 BaseSettings import
 try:
     from pydantic_settings import BaseSettings
+    from pydantic import ConfigDict
+    PYDANTIC_V2 = True
 except ImportError:
     try:
         from pydantic import BaseSettings
+        PYDANTIC_V2 = False
     except ImportError:
         # Fallback for newer versions
         class BaseSettings:
             def __init__(self, **kwargs):
                 for key, value in kwargs.items():
                     setattr(self, key, value)
+        PYDANTIC_V2 = False
 
 
 class Settings(BaseSettings):
@@ -31,12 +35,20 @@ class Settings(BaseSettings):
     S3_ENDPOINT_URL: Optional[str] = os.getenv("S3_ENDPOINT_URL")  # For LocalStack or MinIO
     
     # File upload settings
-    MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
-    ALLOWED_FILE_EXTENSIONS: list = [".csv"]
+    MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB to accommodate Excel files
+    ALLOWED_FILE_EXTENSIONS: list = [".csv", ".xlsx", ".xls"]
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    if PYDANTIC_V2:
+        model_config = ConfigDict(
+            env_file=".env",
+            case_sensitive=True,
+            extra="ignore"  # Allow extra fields in .env file
+        )
+    else:
+        class Config:
+            env_file = ".env"
+            case_sensitive = True
+            extra = "ignore"
 
 
 # Create global settings instance

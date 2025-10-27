@@ -1,21 +1,46 @@
 import csv
-from io import StringIO
+from io import StringIO, BytesIO
 from fastapi import UploadFile
-import magic
-from typing import Optional
+from typing import Optional, Dict, Any, List
+import pandas as pd
+import numpy as np
+
+# Optional import for file type detection
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
+    # print("⚠️  python-magic not available - using basic file type detection")
 
 from config import settings
 
 
-async def validate_csv_file(file: UploadFile) -> bool:
+def clean_nan_values(data):
+    """Clean NaN values from data to make it JSON serializable"""
+    if isinstance(data, dict):
+        return {k: clean_nan_values(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [clean_nan_values(item) for item in data]
+    elif pd.isna(data) or (isinstance(data, float) and np.isnan(data)):
+        return None
+    elif isinstance(data, np.integer):
+        return int(data)
+    elif isinstance(data, np.floating):
+        return float(data) if not np.isnan(data) else None
+    else:
+        return data
+
+
+async def validate_data_file(file: UploadFile) -> Dict[str, Any]:
     """
-    Validate uploaded CSV file
+    Validate uploaded data file (CSV, XLSX, XLS)
     
     Args:
         file: FastAPI UploadFile object
         
     Returns:
-        True if file is valid CSV
+        Dict with validation results and file info
         
     Raises:
         ValueError: If file validation fails
@@ -33,63 +58,61 @@ async def validate_csv_file(file: UploadFile) -> bool:
         if file.size > settings.MAX_FILE_SIZE:
             raise ValueError(f"File size ({file.size} bytes) exceeds maximum allowed size ({settings.MAX_FILE_SIZE} bytes)")
     
-    # Check content type
-    if file.content_type and not file.content_type.startswith(('text/csv', 'application/csv', 'text/plain')):
-        raise ValueError(f"Invalid content type: {file.content_type}. Expected CSV file")
+    # Determine file type from extension
+    file_type = 'unknown'
+    if file_extension == 'csv':
+        file_type = 'csv'
+    elif file_extension in ['xlsx', 'xls']:
+        file_type = 'excel'
     
-    # Read and validate CSV content
+    # Check content type (be permissive as browsers send various MIME types)
+    if file.content_type:
+        allowed_types = [
+            # CSV types
+            'text/csv', 'application/csv', 'text/plain',
+            'text/comma-separated-values', 'text/x-csv', 'application/x-csv',
+            # Excel types
+            'application/vnd.ms-excel', 
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            # Generic types
+            'application/octet-stream'
+        ]
+        
+        # Check if content type starts with any allowed type
+        is_allowed = any(file.content_type.startswith(mime_type) for mime_type in allowed_types)
+        
+        if not is_allowed:
+            # Issue warning but don't fail - rely on file extension and content validation
+            print(f"⚠️  Unknown content type: {file.content_type} - proceeding with content validation")
+    
+    # Read and validate file content based on type
     try:
         # Reset file pointer
         await file.seek(0)
         
-        # Read first chunk to validate CSV format
-        chunk = await file.read(8192)  # Read first 8KB
-        
-        if not chunk:
-            raise ValueError("File is empty")
-        
-        # Try to decode as text
-        try:
-            text_content = chunk.decode('utf-8')
-        except UnicodeDecodeError:
-            try:
-                text_content = chunk.decode('latin-1')
-            except UnicodeDecodeError:
-                raise ValueError("File encoding not supported. Please use UTF-8 or Latin-1")
-        
-        # Validate CSV format by trying to parse it
-        csv_reader = csv.Sniffer()
-        sample = text_content[:1024]  # Use first 1KB for sniffing
-        
-        try:
-            dialect = csv_reader.sniff(sample, delimiters=',;\t')
-            if not csv_reader.has_header(sample):
-                # Optional: You might want to require headers
-                pass
-        except csv.Error as e:
-            raise ValueError(f"Invalid CSV format: {str(e)}")
-        
-        # Additional validation: check if we can read at least one row
-        string_buffer = StringIO(text_content)
-        reader = csv.reader(string_buffer, dialect)
-        
-        try:
-            rows_read = 0
-            for row in reader:
-                rows_read += 1
-                if rows_read >= 2:  # Check header + at least one data row
-                    break
-            
-            if rows_read == 0:
-                raise ValueError("CSV file appears to be empty")
-                
-        except csv.Error as e:
-            raise ValueError(f"Error reading CSV content: {str(e)}")
+        if file_type == 'csv':
+            # CSV validation
+            validation_result = await _validate_csv_content(file)
+        elif file_type == 'excel':
+            # Excel validation  
+            validation_result = await _validate_excel_content(file)
+        else:
+            raise ValueError(f"Unsupported file type: {file_extension}")
         
         # Reset file pointer for actual upload
         await file.seek(0)
         
-        return True
+        # Return comprehensive validation result
+        return {
+            'valid': True,
+            'file_type': file_type,
+            'file_extension': file_extension,
+            'rows': validation_result.get('rows', 0),
+            'columns': validation_result.get('columns', 0),
+            'has_headers': validation_result.get('has_headers', False),
+            'encoding': validation_result.get('encoding', 'unknown'),
+            'preview': validation_result.get('preview', [])
+        }
         
     except Exception as e:
         # Reset file pointer even if validation fails
@@ -98,6 +121,178 @@ async def validate_csv_file(file: UploadFile) -> bool:
             raise e
         else:
             raise ValueError(f"File validation error: {str(e)}")
+
+
+async def _validate_csv_content(file: UploadFile) -> Dict[str, Any]:
+    """Validate CSV file content and return metadata"""
+    # Read file content
+    content = await file.read()
+    
+    if not content:
+        raise ValueError("File is empty")
+    
+    # Try different encodings
+    text_content = None
+    encoding = 'unknown'
+    
+    for enc in ['utf-8', 'latin-1', 'cp1252']:
+        try:
+            text_content = content.decode(enc)
+            encoding = enc
+            break
+        except UnicodeDecodeError:
+            continue
+    
+    if text_content is None:
+        raise ValueError("File encoding not supported. Please use UTF-8, Latin-1, or Windows-1252")
+    
+    # Use pandas for robust CSV parsing
+    try:
+        # Create StringIO from text content
+        string_buffer = StringIO(text_content)
+        
+        # Try to read with pandas (more robust than csv module)
+        df = pd.read_csv(string_buffer, nrows=100)  # Read first 100 rows for validation
+        
+        if df.empty:
+            raise ValueError("CSV file appears to be empty or has no valid data")
+        
+        # Get preview data (first 5 rows) and clean NaN values
+        preview = []
+        if len(df) > 0:
+            preview_raw = df.head(5).to_dict('records')
+            preview = clean_nan_values(preview_raw)
+        
+        # Clean column names (handle NaN in column names)
+        column_names = [str(col) if pd.notna(col) else f"Column_{i}" for i, col in enumerate(df.columns)]
+        
+        return {
+            'rows': len(df),
+            'columns': len(df.columns),
+            'has_headers': True,  # pandas assumes headers by default
+            'encoding': encoding,
+            'preview': preview,
+            'column_names': column_names
+        }
+        
+    except Exception as e:
+        # Fallback to basic CSV validation
+        return await _validate_csv_basic(text_content, encoding)
+
+
+async def _validate_csv_basic(text_content: str, encoding: str) -> Dict[str, Any]:
+    """Basic CSV validation fallback"""
+    try:
+        # Use csv.Sniffer for dialect detection
+        sample = text_content[:8192]  # Use first 8KB for sniffing
+        sniffer = csv.Sniffer()
+        
+        # Try to detect delimiter
+        delimiter = ','
+        try:
+            dialect = sniffer.sniff(sample, delimiters=',;\t|')
+            delimiter = dialect.delimiter
+        except csv.Error:
+            # Use default comma if sniffing fails
+            pass
+        
+        # Parse CSV content
+        string_buffer = StringIO(text_content)
+        reader = csv.reader(string_buffer, delimiter=delimiter)
+        
+        rows = list(reader)
+        
+        if not rows:
+            raise ValueError("CSV file appears to be empty")
+        
+        # Check for headers
+        has_headers = len(rows) > 1 and len(rows[0]) > 0
+        
+        # Get preview (first 5 rows)
+        preview_rows = rows[:5]
+        preview = []
+        
+        if has_headers and len(rows) > 1:
+            headers = rows[0]
+            for row in preview_rows[1:]:
+                if len(row) <= len(headers):
+                    preview.append(dict(zip(headers, row + [''] * (len(headers) - len(row)))))
+        
+        return {
+            'rows': len(rows) - (1 if has_headers else 0),
+            'columns': len(rows[0]) if rows else 0,
+            'has_headers': has_headers,
+            'encoding': encoding,
+            'preview': preview,
+            'column_names': rows[0] if has_headers else []
+        }
+        
+    except Exception as e:
+        raise ValueError(f"Invalid CSV format: {str(e)}")
+
+
+async def _validate_excel_content(file: UploadFile) -> Dict[str, Any]:
+    """Validate Excel file content and return metadata"""
+    # Read file content
+    content = await file.read()
+    
+    if not content:
+        raise ValueError("File is empty")
+    
+    try:
+        # Create BytesIO from content
+        bytes_buffer = BytesIO(content)
+        
+        # Try to read Excel file with pandas
+        # First, try to read just the first sheet with a limited number of rows
+        df = pd.read_excel(bytes_buffer, nrows=100, sheet_name=0)
+        
+        if df.empty:
+            raise ValueError("Excel file appears to be empty or has no valid data")
+        
+        # Get preview data (first 5 rows) and clean NaN values
+        preview = []
+        if len(df) > 0:
+            preview_raw = df.head(5).to_dict('records')
+            preview = clean_nan_values(preview_raw)
+        
+        # Clean column names (handle NaN in column names)
+        column_names = [str(col) if pd.notna(col) else f"Column_{i}" for i, col in enumerate(df.columns)]
+        
+        # Try to get all sheet names
+        bytes_buffer.seek(0)
+        try:
+            if file.filename.lower().endswith('.xlsx'):
+                excel_file = pd.ExcelFile(bytes_buffer, engine='openpyxl')
+            else:
+                excel_file = pd.ExcelFile(bytes_buffer, engine='xlrd')
+            sheet_names = excel_file.sheet_names
+        except:
+            sheet_names = ['Sheet1']  # fallback
+        
+        return {
+            'rows': len(df),
+            'columns': len(df.columns),
+            'has_headers': True,  # pandas assumes headers by default
+            'encoding': 'binary',
+            'preview': preview,
+            'column_names': column_names,
+            'sheet_names': sheet_names,
+            'active_sheet': sheet_names[0] if sheet_names else 'Sheet1'
+        }
+        
+    except Exception as e:
+        raise ValueError(f"Invalid Excel file: {str(e)}")
+
+
+# Legacy function for backward compatibility
+async def validate_csv_file(file: UploadFile) -> bool:
+    """Legacy function - use validate_data_file instead"""
+    try:
+        result = await validate_data_file(file)
+        return result['valid']
+    except Exception:
+        return False
 
 
 def validate_filename(filename: str) -> bool:
@@ -142,7 +337,7 @@ def validate_filename(filename: str) -> bool:
 
 def get_file_mime_type(file_content: bytes) -> Optional[str]:
     """
-    Detect MIME type of file content using python-magic
+    Detect MIME type of file content
     
     Args:
         file_content: Binary content of the file
@@ -150,8 +345,35 @@ def get_file_mime_type(file_content: bytes) -> Optional[str]:
     Returns:
         MIME type string or None if detection fails
     """
+    if MAGIC_AVAILABLE:
+        try:
+            mime = magic.Magic(mime=True)
+            return mime.from_buffer(file_content)
+        except Exception:
+            pass
+    
+    # Fallback: Basic file type detection for CSV
     try:
-        mime = magic.Magic(mime=True)
-        return mime.from_buffer(file_content)
+        # Try to decode as text to check if it's a CSV-like file
+        text_content = file_content.decode('utf-8')
+        
+        # Simple heuristic: if it contains commas and newlines, likely CSV
+        if ',' in text_content and '\n' in text_content:
+            return 'text/csv'
+        elif '\t' in text_content and '\n' in text_content:
+            return 'text/tab-separated-values'
+        else:
+            return 'text/plain'
+            
+    except UnicodeDecodeError:
+        try:
+            # Try latin-1 encoding
+            text_content = file_content.decode('latin-1')
+            if ',' in text_content and '\n' in text_content:
+                return 'text/csv'
+            return 'text/plain'
+        except Exception:
+            return None
+    
     except Exception:
         return None

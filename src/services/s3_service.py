@@ -41,8 +41,7 @@ class S3Service:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 self.executor,
-                self.s3_client.head_bucket,
-                {'Bucket': settings.S3_BUCKET_NAME}
+                lambda: self.s3_client.head_bucket(Bucket=settings.S3_BUCKET_NAME)
             )
             return True
         except ClientError as e:
@@ -73,8 +72,7 @@ class S3Service:
             try:
                 await loop.run_in_executor(
                     self.executor,
-                    self.s3_client.head_bucket,
-                    {'Bucket': settings.S3_BUCKET_NAME}
+                    lambda: self.s3_client.head_bucket(Bucket=settings.S3_BUCKET_NAME)
                 )
                 logger.info(f"Bucket {settings.S3_BUCKET_NAME} already exists")
                 return True
@@ -93,8 +91,7 @@ class S3Service:
             
             await loop.run_in_executor(
                 self.executor,
-                self.s3_client.create_bucket,
-                create_bucket_kwargs
+                lambda: self.s3_client.create_bucket(**create_bucket_kwargs)
             )
             
             logger.info(f"Created bucket {settings.S3_BUCKET_NAME}")
@@ -152,12 +149,22 @@ class S3Service:
             if settings.S3_ENDPOINT_URL:
                 file_url = f"{settings.S3_ENDPOINT_URL}/{settings.S3_BUCKET_NAME}/{key}"
             
+            # Get file size
+            file_size = None
+            try:
+                current_pos = file_obj.tell()
+                file_obj.seek(0, 2)  # Seek to end
+                file_size = file_obj.tell()
+                file_obj.seek(current_pos)  # Reset position
+            except Exception:
+                file_size = None
+                
             return {
                 "success": True,
                 "key": key,
                 "bucket": settings.S3_BUCKET_NAME,
                 "url": file_url,
-                "size": file_obj.tell() if hasattr(file_obj, 'tell') else None
+                "size": file_size
             }
             
         except Exception as e:

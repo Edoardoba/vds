@@ -145,120 +145,227 @@ export default function AnalysisRequest() {
             </p>
           </motion.div>
 
-        {/* Analysis Form */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="card mb-6"
-        >
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="query" className="block text-sm font-medium text-gray-700 mb-2">
-                What would you like to analyze?
-              </label>
-              <textarea
-                id="query"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                rows={4}
-                className="input-field resize-none"
-                placeholder="Enter your analysis request here... 
-For example: 'Show me the top 10 products by sales' or 'What are the monthly revenue trends?'"
-                disabled={isLoading}
-              />
+          {/* Premium Analysis Form */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="max-w-4xl mx-auto mb-12"
+          >
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-2xl overflow-hidden">
+              <div className="p-8">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div>
+                    <label htmlFor="query" className="block text-lg font-semibold text-gray-900 mb-3">
+                      What insights do you need from your data?
+                    </label>
+                    <div className="relative">
+                      <textarea
+                        id="query"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        rows={4}
+                        className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 placeholder:text-gray-400 resize-none bg-gray-50/50"
+                        placeholder="Ask me anything about your data... 
+
+Try: 'Show me which products are trending upward this quarter' or 'What patterns do you see in customer behavior?'"
+                        disabled={isLoading}
+                      />
+                      <div className="absolute bottom-4 right-4">
+                        <motion.div
+                          animate={{ rotate: [0, 360] }}
+                          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                          className="w-6 h-6 text-indigo-300"
+                        >
+                          <Sparkles className="w-6 h-6" />
+                        </motion.div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-center">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      type="submit"
+                      disabled={isLoading || !query.trim()}
+                      className="px-12 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-lg font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader className="w-5 h-5 animate-spin" />
+                          Banta is analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Brain className="w-5 h-5" />
+                          Ask Banta
+                          <Send className="w-5 h-5" />
+                        </>
+                      )}
+                    </motion.button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Example Queries Grid */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="max-w-6xl mx-auto mb-12"
+          >
+            <div className="text-center mb-8">
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                Need inspiration? Try these questions
+              </h3>
+              <p className="text-gray-600">
+                Click any example below to get started with your analysis
+              </p>
             </div>
             
-            <div className="flex justify-end">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                type="submit"
-                disabled={isLoading || !query.trim()}
-                className="btn-primary"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 mr-2" />
-                    Analyze Data
-                  </>
-                )}
-              </motion.button>
-            </div>
-          </form>
-        </motion.div>
-
-        {/* Example Queries */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-blue-50 rounded-xl p-6 border border-blue-200 mb-6"
-        >
-          <div className="flex items-start gap-3">
-            <Lightbulb className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-medium text-blue-900 mb-3">Example Analysis Requests</h3>
-              <div className="grid grid-cols-1 gap-2">
-                {exampleQueries.map((example, index) => (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {exampleQueries.map((example, index) => {
+                const IconComponent = example.icon
+                return (
                   <motion.button
                     key={index}
-                    whileHover={{ scale: 1.02 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.7 + index * 0.1 }}
+                    whileHover={{ y: -5, scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => setQuery(example)}
-                    className="text-left p-3 text-sm text-blue-800 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200"
+                    onClick={() => setQuery(example.text)}
                     disabled={isLoading}
+                    className="group text-left p-6 bg-white/60 backdrop-blur-sm hover:bg-white/80 rounded-xl border border-gray-200/50 hover:border-indigo-300 transition-all duration-300 shadow-sm hover:shadow-xl disabled:opacity-50"
                   >
-                    "{example}"
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-purple-100 group-hover:from-indigo-200 group-hover:to-purple-200 rounded-xl flex items-center justify-center transition-all duration-300">
+                        <IconComponent className="w-6 h-6 text-indigo-600" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-2">
+                          {example.category}
+                        </div>
+                        <p className="text-gray-800 font-medium leading-relaxed group-hover:text-gray-900 transition-colors">
+                          "{example.text}"
+                        </p>
+                      </div>
+                    </div>
                   </motion.button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Results */}
-        {result && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="card"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-5 h-5 text-green-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Analysis Results</h3>
-            </div>
-            
-            <div className="prose max-w-none">
-              <pre className="whitespace-pre-wrap bg-gray-50 p-4 rounded-lg text-sm">
-                {JSON.stringify(result, null, 2)}
-              </pre>
+                )
+              })}
             </div>
           </motion.div>
-        )}
-
-        {/* Loading State */}
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="card"
-          >
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <Loader className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-                <p className="text-gray-600">Analyzing your data...</p>
-                <p className="text-sm text-gray-500 mt-1">This may take a few moments</p>
-              </div>
-            </div>
-          </motion.div>
-        )}
+        </div>
       </div>
+
+      {/* Premium Results Section */}
+      {result && (
+        <div className="px-6 pb-12">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 200 }}
+              className="bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500 rounded-2xl shadow-2xl overflow-hidden mb-6"
+            >
+              <div className="p-6 text-center">
+                <div className="flex items-center justify-center gap-3 text-white">
+                  <motion.div
+                    animate={{ rotate: [0, 360] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  >
+                    <CheckCircle className="w-8 h-8" />
+                  </motion.div>
+                  <h3 className="text-2xl font-bold">
+                    Banta has analyzed your data!
+                  </h3>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-2xl overflow-hidden"
+            >
+              <div className="p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                    <BarChart3 className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900">Analysis Results</h3>
+                </div>
+                
+                <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-100">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed overflow-x-auto">
+                    {JSON.stringify(result, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Loading State */}
+      {isLoading && (
+        <div className="px-6 pb-12">
+          <div className="max-w-4xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-2xl overflow-hidden"
+            >
+              <div className="p-12 text-center">
+                <motion.div
+                  animate={{ 
+                    scale: [1, 1.1, 1],
+                    rotate: [0, 360] 
+                  }}
+                  transition={{ 
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut" 
+                  }}
+                  className="w-20 h-20 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6"
+                >
+                  <Brain className="w-10 h-10 text-white" />
+                </motion.div>
+                
+                <h3 className="text-2xl font-bold text-gray-900 mb-4">
+                  Banta is analyzing your data...
+                </h3>
+                <p className="text-gray-600 text-lg mb-6">
+                  Our AI is processing your request and finding the most valuable insights
+                </p>
+                
+                {/* Loading Animation Dots */}
+                <div className="flex items-center justify-center gap-2">
+                  {[0, 1, 2].map((i) => (
+                    <motion.div
+                      key={i}
+                      animate={{
+                        scale: [1, 1.2, 1],
+                        opacity: [0.3, 1, 0.3]
+                      }}
+                      transition={{
+                        duration: 1.5,
+                        repeat: Infinity,
+                        delay: i * 0.2
+                      }}
+                      className="w-3 h-3 bg-gradient-to-r from-indigo-400 to-purple-500 rounded-full"
+                    />
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

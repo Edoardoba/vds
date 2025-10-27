@@ -52,7 +52,7 @@ export default function QuestionInterface() {
             Upload Data First
           </h3>
           <p className="text-gray-600 mb-6">
-            Upload your CSV file to start asking intelligent questions about your data.
+            Upload your file to start asking intelligent questions about your data.
           </p>
           <motion.button
             whileHover={{ scale: 1.05 }}
