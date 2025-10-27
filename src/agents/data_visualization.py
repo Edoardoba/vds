@@ -76,9 +76,14 @@ Generate complete, production-ready Python code to perform comprehensive explora
    - Feature relationship analysis
    - Interactive-style static plots
 
-6. **Summary Insights:**
-   - Document key patterns discovered
-   - Highlight unusual observations
+6. **Chart Explanations & Business Insights:**
+   - For each visualization created, provide detailed explanations of:
+     * What the chart shows and why it's important
+     * Key patterns, trends, or outliers visible in the chart
+     * Business implications of the findings
+     * Actionable recommendations based on the visual insights
+   - Document key patterns discovered across all visualizations
+   - Highlight unusual observations and their potential significance
    - Suggest areas for deeper analysis
 
 **Requirements:**
@@ -112,7 +117,7 @@ Respond with ONLY a JSON object:
     "code": "complete Python code for comprehensive EDA and visualization",
     "description": "Exploratory data analysis with statistical visualizations and pattern discovery",
     "outputs": ["eda_insights.txt", "data_overview.png", "correlation_matrix.png", "distributions.png", "relationships.png"],
-    "insights": "Key patterns, trends, and relationships discovered in the data"
+    "insights": "## Chart Explanations & Key Insights\n\n### Data Overview Chart\n- **What it shows**: [Explain the overview visualization]\n- **Key findings**: [What patterns are visible]\n- **Business implications**: [What this means for the business]\n\n### Correlation Matrix\n- **What it shows**: [Explain the correlation heatmap]\n- **Key findings**: [Strong correlations discovered]\n- **Business implications**: [How to leverage these relationships]\n\n### Distribution Analysis\n- **What it shows**: [Explain the distribution charts]\n- **Key findings**: [Notable distribution patterns]\n- **Business implications**: [What the distributions suggest]\n\n### Additional Insights\n- [Overall patterns discovered]\n- [Unusual observations and their significance]\n- [Recommended next steps for analysis]"
 }}
 """
 

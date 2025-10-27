@@ -112,9 +112,9 @@ sns.set_palette("RdYlGn_r")
 Respond with ONLY a JSON object:
 {{
     "code": "complete Python code for SMB cash flow analysis",
-    "description": "Comprehensive cash flow management analysis with forecasting and working capital optimization for small businesses",
+    "description": "Comprehensive cash flow management analysis with forecasting and working capital optimization for small businesses", 
     "outputs": ["cash_flow_analysis_report.txt", "cash_flow_forecast.csv", "cash_flow_dashboard.png", "working_capital_analysis.png", "cash_flow_trends.png", "liquidity_metrics.png", "collections_analysis.png"],
-    "insights": "Critical cash flow patterns, liquidity risks, working capital optimization opportunities, and actionable recommendations for SMB cash management"
+    "insights": "## Cash Flow Analysis - Chart Explanations\n\n### Cash Flow Dashboard\n- **What it shows**: Monthly cash inflows vs outflows with running balance\n- **Key findings**: Seasonal patterns, cash gaps, and peak/trough periods\n- **Business implications**: When to expect cash shortages and optimal timing for investments\n- **Action items**: Specific months to focus on collections or defer payments\n\n### Working Capital Analysis\n- **What it shows**: Days sales outstanding (DSO), days payable outstanding (DPO), and cash conversion cycle\n- **Key findings**: Efficiency of working capital management and comparison to industry benchmarks\n- **Business implications**: How quickly cash is tied up in operations vs. available for growth\n- **Action items**: Opportunities to negotiate better payment terms or improve collections\n\n### Cash Flow Trends\n- **What it shows**: Historical cash flow patterns and trend analysis\n- **Key findings**: Growth trends, volatility patterns, and seasonal adjustments needed\n- **Business implications**: Predictability of cash flows and planning horizon reliability\n- **Action items**: Recommendations for cash flow stabilization strategies\n\n### Liquidity Metrics\n- **What it shows**: Cash runway, minimum cash thresholds, and liquidity ratios\n- **Key findings**: How long current cash will last and safety margins\n- **Business implications**: Risk level and emergency fund requirements\n- **Action items**: Immediate steps needed to improve liquidity position"
 }}
 """
 
