@@ -165,12 +165,39 @@ export default function DataUpload() {
       return
     }
 
+    if (uploadedFiles.length === 0) {
+      toast.error('Please upload at least one file first')
+      return
+    }
+
+    // Get the first uploaded file for analysis
+    const fileToAnalyze = files.find(f => f.status === 'success')?.file
+    
+    if (!fileToAnalyze) {
+      toast.error('No successfully uploaded files found')
+      return
+    }
+
     setIsAnalyzing(true)
     try {
-      const response = await apiEndpoints.askQuestion(query.trim())
+      // Call the new analyzeData endpoint which automatically selects agents
+      const response = await apiEndpoints.analyzeData(
+        fileToAnalyze, 
+        query.trim(),
+        (progressEvent) => {
+          // Optional: show analysis progress
+          console.log('Analysis progress:', progressEvent)
+        }
+      )
       
-      setAnalysisResult(response.data)
-      toast.success('Analysis completed!')
+      // Navigate to results page with analysis data
+      navigate('/analysis-results', {
+        state: {
+          analysisResult: response.data,
+          userQuestion: query.trim()
+        }
+      })
+
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Analysis failed'
       toast.error(errorMessage)
@@ -241,8 +268,8 @@ export default function DataUpload() {
             </p>
 
           </motion.div>
-          {/* Upload Controls */}
-          {files.length > 0 && (
+          {/* Upload Controls - Only show when not in prompt mode */}
+          {files.length > 0 && !showPrompt && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}

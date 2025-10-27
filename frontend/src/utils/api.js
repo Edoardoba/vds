@@ -112,7 +112,38 @@ export const apiEndpoints = {
     return api.get('/list-files', { params })
   },
   
-  // Future AI endpoints
+  // AI Analysis endpoints
+  analyzeData: (file, question, onUploadProgress) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('question', question)
+    
+    return api.post('/analyze-data', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress,
+      timeout: 600000, // 10 minutes for analysis
+    })
+  },
+  
+  previewData: (file, onUploadProgress) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    return api.post('/preview-data', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress,
+    })
+  },
+  
+  getAvailableAgents: () => {
+    return api.get('/agents/available')
+  },
+  
+  // Legacy endpoints (maintained for backward compatibility)
   askQuestion: (question, fileId = null) => {
     return api.post('/ask-question', { question, file_id: fileId })
   },

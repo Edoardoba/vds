@@ -15,7 +15,7 @@ def check_python_version():
         print("❌ Python 3.8 or higher is required")
         print(f"Current version: {sys.version}")
         return False
-    print(f"✅ Python version: {sys.version}")
+    # print(f"✅ Python version: {sys.version}")
     return True
 
 
@@ -25,11 +25,11 @@ def check_dependencies():
         import fastapi
         import uvicorn
         import boto3
-        print("✅ Required dependencies found")
+        # print("✅ Required dependencies found")
         return True
     except ImportError as e:
-        print(f"❌ Missing dependency: {e}")
-        print("Please run: pip install -r requirements.txt")
+        # print(f"❌ Missing dependency: {e}")
+        # print("Please run: pip install -r requirements.txt")
         return False
 
 
@@ -51,11 +51,7 @@ def check_env_file():
 
 def start_server():
     """Start the FastAPI server"""
-    print("\n🚀 Starting CSV Upload Service...")
-    print("API will be available at: http://localhost:8000")
-    print("API documentation: http://localhost:8000/docs")
-    print("Press Ctrl+C to stop the server\n")
-    
+
     try:
         # Start server from current directory (should be src/)
         subprocess.run([

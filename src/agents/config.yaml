@@ -1,0 +1,577 @@
+# ========================================
+# CORE DATA OPERATIONS
+# ========================================
+
+agents:
+  data_quality_audit:
+    name: "Data Quality Audit"
+    description: "Comprehensive data quality assessment focusing on completeness, accuracy, consistency, and validity of business data"
+    specialties:
+      - "data completeness assessment" 
+      - "accuracy validation"
+      - "consistency checking"
+      - "business rule validation"
+      - "data profiling"
+      - "quality scoring"
+    keywords:
+      - "data quality"
+      - "audit" 
+      - "completeness"
+      - "accuracy"
+      - "validation"
+      - "profiling"
+      - "assessment"
+    required_columns: []
+    output_type: "quality_report"
+
+  exploratory_data_analysis:
+    name: "Exploratory Data Analysis"
+    description: "Deep dive exploration of datasets to understand structure, patterns, relationships, and generate actionable business insights"
+    specialties:
+      - "data distribution analysis"
+      - "correlation discovery"
+      - "pattern identification"
+      - "business insight generation" 
+      - "statistical summaries"
+      - "data storytelling"
+    keywords:
+      - "explore"
+      - "eda"
+      - "patterns"
+      - "insights" 
+      - "distribution"
+      - "relationships"
+      - "understand"
+    required_columns: []
+    output_type: "exploration_report"
+
+  business_intelligence_dashboard:
+    name: "Business Intelligence Dashboard"
+    description: "Creates executive-ready visualizations and KPI dashboards for business decision makers and stakeholders"
+    specialties:
+      - "kpi visualization"
+      - "executive dashboards"
+      - "business metrics"
+      - "performance tracking"
+      - "trend visualization"
+      - "comparative analysis"
+    keywords:
+      - "dashboard"
+      - "kpi"
+      - "business intelligence"
+      - "executive"
+      - "metrics"
+      - "performance"
+      - "tracking"
+    required_columns: []
+    output_type: "dashboard_report"
+
+# ========================================
+# CUSTOMER & MARKETING ANALYTICS
+# ========================================
+
+  churn_prediction:
+    name: "Customer Churn Prediction"
+    description: "Advanced machine learning models to predict customer churn probability and identify at-risk customers for proactive retention"
+    specialties:
+      - "churn probability modeling"
+      - "retention strategy optimization"
+      - "customer lifetime value prediction"
+      - "early warning systems"
+      - "feature importance analysis"
+      - "risk scoring"
+    keywords:
+      - "churn"
+      - "attrition"
+      - "retention"
+      - "customer lifetime"
+      - "dropout"
+      - "cancel"
+      - "unsubscribe"
+    required_columns:
+      - "customer_id"
+    output_type: "churn_model"
+
+  customer_segmentation:
+    name: "Customer Segmentation & Personas"
+    description: "Advanced customer clustering using RFM, behavioral, and demographic data to create actionable customer personas and targeting strategies"
+    specialties:
+      - "rfm segmentation"
+      - "behavioral clustering"
+      - "persona development"
+      - "targeting strategies"
+      - "customer profiling"
+      - "value-based segmentation"
+    keywords:
+      - "segment"
+      - "cluster"
+      - "personas"
+      - "customer groups"
+      - "rfm"
+      - "behavioral"
+      - "demographics"
+      - "targeting"
+    required_columns:
+      - "customer_id"
+    output_type: "segmentation_model"
+
+  cohort_analysis:
+    name: "Customer Cohort Analysis"
+    description: "Tracks customer behavior and retention patterns over time by acquisition cohorts to understand customer lifecycle dynamics"
+    specialties:
+      - "cohort retention analysis"
+      - "customer lifecycle tracking"
+      - "acquisition cohort comparison"
+      - "ltv cohort analysis"
+      - "behavioral trend analysis"
+      - "churn pattern identification"
+    keywords:
+      - "cohort"
+      - "retention"
+      - "lifecycle"
+      - "acquisition"
+      - "customer behavior"
+      - "longitudinal"
+    required_columns:
+      - "customer_id"
+      - "date"
+    output_type: "cohort_report"
+
+  marketing_roi_analysis:
+    name: "Marketing ROI & Attribution"
+    description: "Analyzes marketing campaign effectiveness, attribution modeling, and ROI optimization across channels and touchpoints"
+    specialties:
+      - "campaign roi analysis"
+      - "attribution modeling"
+      - "channel effectiveness"
+      - "marketing mix optimization"
+      - "conversion funnel analysis"
+      - "customer acquisition cost"
+    keywords:
+      - "marketing"
+      - "roi"
+      - "attribution"
+      - "campaign"
+      - "conversion"
+      - "acquisition cost"
+      - "roas"
+    required_columns:
+      - "campaign_id"
+    output_type: "marketing_report"
+
+  customer_journey_analysis:
+    name: "Customer Journey Mapping"
+    description: "Maps and analyzes customer touchpoints, interactions, and conversion paths to optimize customer experience and conversion rates"
+    specialties:
+      - "touchpoint analysis"
+      - "conversion path mapping"
+      - "journey optimization"
+      - "drop-off identification"
+      - "experience analysis"
+      - "interaction patterns"
+    keywords:
+      - "journey"
+      - "touchpoint"
+      - "conversion"
+      - "path"
+      - "experience"
+      - "interaction"
+      - "funnel"
+    required_columns:
+      - "customer_id"
+      - "touchpoint"
+    output_type: "journey_report"
+
+# ========================================
+# SALES & REVENUE ANALYTICS
+# ========================================
+
+  sales_performance_analysis:
+    name: "Sales Performance Analytics"
+    description: "Comprehensive sales analysis including revenue trends, conversion rates, sales funnel optimization, and territory performance"
+    specialties:
+      - "revenue trend analysis"
+      - "conversion rate optimization"
+      - "sales funnel analysis"
+      - "territory performance"
+      - "quota attainment tracking"
+      - "sales efficiency metrics"
+    keywords:
+      - "sales"
+      - "revenue"
+      - "conversion"
+      - "funnel"
+      - "territory"
+      - "quota"
+      - "performance"
+    required_columns:
+      - "revenue"
+    output_type: "sales_report"
+
+  pricing_optimization:
+    name: "Pricing Strategy & Optimization"
+    description: "Price elasticity analysis, competitive pricing research, and optimization models to maximize revenue and profitability"
+    specialties:
+      - "price elasticity analysis"
+      - "competitive pricing analysis"
+      - "revenue optimization"
+      - "demand forecasting"
+      - "price sensitivity modeling"
+      - "dynamic pricing strategies"
+    keywords:
+      - "pricing"
+      - "price"
+      - "elasticity"
+      - "optimization"
+      - "competitive"
+      - "revenue optimization"
+    required_columns:
+      - "price"
+    output_type: "pricing_report"
+
+  product_performance_analysis:
+    name: "Product Performance Analytics"
+    description: "Product sales analysis, cross-sell opportunities, product lifecycle management, and portfolio optimization strategies"
+    specialties:
+      - "product sales analysis"
+      - "cross-sell identification"
+      - "product lifecycle analysis"
+      - "portfolio optimization"
+      - "feature adoption tracking"
+      - "product profitability"
+    keywords:
+      - "product"
+      - "cross-sell"
+      - "portfolio"
+      - "lifecycle"
+      - "adoption"
+      - "profitability"
+    required_columns:
+      - "product_id"
+    output_type: "product_report"
+
+  revenue_forecasting:
+    name: "Revenue Forecasting & Planning"
+    description: "Advanced revenue prediction models using historical trends, seasonal patterns, and business drivers for accurate financial planning"
+    specialties:
+      - "revenue prediction modeling"
+      - "seasonal forecasting"
+      - "scenario planning"
+      - "budget planning support"
+      - "growth projections"
+      - "financial planning"
+    keywords:
+      - "revenue"
+      - "forecast"
+      - "prediction"
+      - "planning"
+      - "budget"
+      - "growth"
+      - "financial"
+    required_columns:
+      - "revenue"
+      - "date"
+    output_type: "forecast_model"
+
+# ========================================
+# FINANCIAL ANALYTICS
+# ========================================
+
+  profitability_analysis:
+    name: "Profitability & Cost Analysis"
+    description: "Margin analysis, cost optimization, profitability by segment/product/channel, and financial efficiency optimization"
+    specialties:
+      - "margin analysis"
+      - "cost optimization"
+      - "profitability segmentation"
+      - "unit economics"
+      - "cost-benefit analysis"
+      - "financial efficiency"
+    keywords:
+      - "profit"
+      - "margin"
+      - "cost"
+      - "profitability"
+      - "economics"
+      - "efficiency"
+    required_columns:
+      - "revenue"
+      - "cost"
+    output_type: "profitability_report"
+
+  financial_health_assessment:
+    name: "Financial Health Assessment"
+    description: "Comprehensive financial ratio analysis, liquidity assessment, and business financial health evaluation with benchmarking"
+    specialties:
+      - "financial ratio analysis"
+      - "liquidity assessment"
+      - "solvency analysis"
+      - "efficiency ratios"
+      - "profitability ratios"
+      - "financial benchmarking"
+    keywords:
+      - "financial health"
+      - "ratios"
+      - "liquidity"
+      - "solvency"
+      - "benchmarking"
+      - "assessment"
+    required_columns:
+      - "revenue"
+      - "assets"
+    output_type: "financial_report"
+
+  budget_variance_analysis:
+    name: "Budget vs Actual Analysis"
+    description: "Budget variance analysis, spend tracking, forecast accuracy assessment, and budget optimization recommendations"
+    specialties:
+      - "budget variance tracking"
+      - "spend analysis"
+      - "forecast accuracy"
+      - "budget optimization"
+      - "variance explanation"
+      - "planning improvement"
+    keywords:
+      - "budget"
+      - "variance"
+      - "actual"
+      - "forecast"
+      - "spend"
+      - "planning"
+    required_columns:
+      - "budget"
+      - "actual"
+    output_type: "variance_report"
+
+# ========================================
+# OPERATIONAL ANALYTICS  
+# ========================================
+
+  inventory_optimization:
+    name: "Inventory & Supply Chain Optimization"
+    description: "Stock level optimization, demand forecasting, supply chain efficiency, and inventory cost reduction strategies"
+    specialties:
+      - "inventory optimization"
+      - "demand forecasting"
+      - "stock level management"
+      - "supply chain analysis"
+      - "carrying cost optimization"
+      - "stockout prevention"
+    keywords:
+      - "inventory"
+      - "stock"
+      - "supply chain"
+      - "demand"
+      - "optimization"
+      - "logistics"
+    required_columns:
+      - "inventory_level"
+    output_type: "inventory_report"
+
+  process_efficiency_analysis:
+    name: "Process Efficiency & Operations"
+    description: "Operational KPI analysis, process bottleneck identification, efficiency optimization, and performance improvement strategies"
+    specialties:
+      - "process optimization"
+      - "bottleneck identification"
+      - "efficiency measurement"
+      - "operational kpis"
+      - "performance improvement"
+      - "resource utilization"
+    keywords:
+      - "process"
+      - "efficiency"
+      - "operations"
+      - "bottleneck"
+      - "optimization"
+      - "performance"
+    required_columns: []
+    output_type: "operations_report"
+
+  quality_control_analysis:
+    name: "Quality Control & Metrics"
+    description: "Quality metrics analysis, defect rate tracking, process control monitoring, and quality improvement recommendations"
+    specialties:
+      - "quality metrics tracking"
+      - "defect rate analysis"
+      - "process control monitoring"
+      - "quality improvement"
+      - "control chart analysis"
+      - "six sigma analysis"
+    keywords:
+      - "quality"
+      - "defect"
+      - "control"
+      - "metrics"
+      - "improvement"
+      - "monitoring"
+    required_columns:
+      - "quality_score"
+    output_type: "quality_report"
+
+# ========================================
+# RISK & FRAUD ANALYTICS
+# ========================================
+
+  anomaly_detection:
+    name: "Anomaly & Fraud Detection"
+    description: "Advanced anomaly detection for fraud prevention, outlier identification, and suspicious pattern recognition using ML algorithms"
+    specialties:
+      - "fraud detection"
+      - "anomaly identification"
+      - "outlier analysis"
+      - "pattern recognition"
+      - "risk scoring"
+      - "suspicious activity detection"
+    keywords:
+      - "anomaly"
+      - "fraud"
+      - "outlier"
+      - "suspicious"
+      - "detection"
+      - "risk"
+    required_columns: []
+    output_type: "anomaly_report"
+
+  risk_assessment:
+    name: "Risk Assessment & Management"
+    description: "Credit risk analysis, operational risk assessment, portfolio risk evaluation, and risk mitigation strategy development"
+    specialties:
+      - "credit risk modeling"
+      - "operational risk assessment"
+      - "portfolio risk analysis"
+      - "risk scoring"
+      - "default prediction"
+      - "risk mitigation"
+    keywords:
+      - "risk"
+      - "credit"
+      - "default"
+      - "assessment"
+      - "portfolio"
+      - "mitigation"
+    required_columns: []
+    output_type: "risk_report"
+
+# ========================================
+# ADVANCED ANALYTICS
+# ========================================
+
+  predictive_modeling:
+    name: "Advanced Predictive Modeling"
+    description: "Custom machine learning models for business prediction tasks including classification, regression, and ensemble methods"
+    specialties:
+      - "machine learning modeling"
+      - "predictive analytics"
+      - "ensemble methods"
+      - "feature engineering"
+      - "model validation"
+      - "prediction optimization"
+    keywords:
+      - "predictive"
+      - "machine learning"
+      - "modeling"
+      - "prediction"
+      - "classification"
+      - "forecasting"
+    required_columns: []
+    output_type: "prediction_model"
+
+  ab_testing_analysis:
+    name: "A/B Testing & Experimentation"
+    description: "Statistical analysis of A/B tests, experiment design validation, significance testing, and business impact assessment"
+    specialties:
+      - "a/b test analysis"
+      - "statistical significance testing"
+      - "experiment design"
+      - "conversion analysis"
+      - "impact measurement"
+      - "test optimization"
+    keywords:
+      - "a/b test"
+      - "experiment"
+      - "testing"
+      - "significance"
+      - "conversion"
+      - "impact"
+    required_columns:
+      - "test_group"
+    output_type: "experiment_report"
+
+  geographic_analysis:
+    name: "Geographic & Location Analytics"
+    description: "Location-based analysis, regional performance comparison, geographic trend identification, and territory optimization"
+    specialties:
+      - "geographic analysis"
+      - "regional performance"
+      - "location intelligence"
+      - "territory optimization"
+      - "spatial analysis"
+      - "demographic overlay"
+    keywords:
+      - "geographic"
+      - "location"
+      - "regional"
+      - "territory"
+      - "spatial"
+      - "map"
+    required_columns:
+      - "location"
+    output_type: "geographic_report"
+
+  survey_sentiment_analysis:
+    name: "Survey & Sentiment Analysis"
+    description: "Customer satisfaction analysis, NPS evaluation, sentiment scoring, and feedback categorization for business insights"
+    specialties:
+      - "customer satisfaction analysis"
+      - "nps analysis"
+      - "sentiment scoring"
+      - "feedback categorization"
+      - "text analytics"
+      - "opinion mining"
+    keywords:
+      - "survey"
+      - "sentiment"
+      - "satisfaction"
+      - "nps"
+      - "feedback"
+      - "opinion"
+    required_columns:
+      - "survey_response"
+    output_type: "sentiment_report"
+
+# ========================================
+# TIME SERIES & FORECASTING
+# ========================================
+
+  time_series_forecasting:
+    name: "Time Series Forecasting"
+    description: "Advanced time series analysis with trend detection, seasonality modeling, and multi-step forecasting for business planning"
+    specialties:
+      - "seasonal decomposition"
+      - "trend analysis" 
+      - "arima modeling"
+      - "forecasting accuracy"
+      - "anomaly detection in time series"
+      - "multi-step prediction"
+    keywords:
+      - "time series"
+      - "forecast"
+      - "trend" 
+      - "seasonal"
+      - "temporal"
+      - "prediction"
+    required_columns:
+      - "date"
+    output_type: "forecast_model"
+
+# Agent selection configuration
+agent_selection:
+  max_agents: 3  # Maximum number of agents to select for a single analysis
+  similarity_threshold: 0.7  # Minimum similarity score to consider an agent
+  
+# Claude API configuration
+claude_api:
+  model: "claude-3-haiku-20240307"  # Using Haiku for faster responses
+  max_tokens: 4000
+  temperature: 0.1  # Low temperature for more consistent code generation

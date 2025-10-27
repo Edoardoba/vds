@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -9,7 +9,9 @@ from io import BytesIO
 
 from config import settings
 from services.s3_service import S3Service
+from services.agent_service import AgentService
 from utils.validators import validate_data_file
+from utils.data_processor import clean_nan_values
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -87,8 +89,9 @@ async def log_requests(request, call_next):
     response = await call_next(request)
     return response
 
-# Initialize S3 service
+# Initialize services
 s3_service = S3Service()
+agent_service = AgentService()
 
 
 @app.get("/")
@@ -246,6 +249,168 @@ async def list_files(folder: Optional[str] = None):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list files: {str(e)}"
+        )
+
+
+@app.post("/analyze-data")
+async def analyze_data(
+    file: UploadFile = File(...),
+    question: str = Form(...)
+):
+    """
+    Analyze uploaded data using AI agents based on user question
+    
+    Args:
+        file: Data file to analyze (CSV, XLSX, or XLS)
+        question: User's analysis question/request
+        
+    Returns:
+        Complete analysis results with agent outputs and report
+    """
+    try:
+        # Validate inputs
+        if not question or question.strip() == "":
+            raise ValueError("Analysis question is required")
+        
+        # Read file content
+        await file.seek(0)
+        file_content = await file.read()
+        
+        if not file_content:
+            raise ValueError("File is empty")
+        
+        # Reset file pointer for validation
+        await file.seek(0)
+        
+        # Validate file type
+        validation_result = await validate_data_file(file)
+        logger.info(f"File validation passed: {file.filename}")
+        
+        # Process analysis request through agent workflow
+        analysis_result = await agent_service.analyze_request(
+            file_content=file_content,
+            filename=file.filename,
+            user_question=question.strip()
+        )
+        
+        # Add validation metadata
+        analysis_result["file_validation"] = validation_result
+        
+        # Clean any NaN values to ensure JSON serializability
+        cleaned_result = clean_nan_values(analysis_result)
+        
+        logger.info(f"Analysis completed for: {file.filename}")
+        
+        return cleaned_result
+        
+    except ValueError as ve:
+        logger.error(f"Validation error in analyze_data: {str(ve)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+    except Exception as e:
+        logger.error(f"Analysis failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Analysis failed: {str(e)}"
+        )
+
+
+@app.post("/preview-data")
+async def preview_data(
+    file: UploadFile = File(...)
+):
+    """
+    Get a preview of uploaded data (first 5 rows) without full analysis
+    
+    Args:
+        file: Data file to preview
+        
+    Returns:
+        Data sample with basic information
+    """
+    try:
+        # Read file content
+        await file.seek(0)
+        file_content = await file.read()
+        
+        if not file_content:
+            raise ValueError("File is empty")
+        
+        # Reset file pointer for validation
+        await file.seek(0)
+        
+        # Validate file
+        validation_result = await validate_data_file(file)
+        
+        # Get data preview
+        from utils.data_processor import DataProcessor
+        data_processor = DataProcessor()
+        
+        preview_data = data_processor.read_file_sample(
+            file_content, file.filename, sample_rows=5
+        )
+        
+        # Add validation metadata
+        preview_data["file_validation"] = validation_result
+        
+        # Clean any NaN values to ensure JSON serializability
+        cleaned_preview = clean_nan_values(preview_data)
+        
+        logger.info(f"Data preview generated for: {file.filename}")
+        
+        return {
+            "success": True,
+            "preview": cleaned_preview,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except ValueError as ve:
+        logger.error(f"Validation error in preview_data: {str(ve)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+    except Exception as e:
+        logger.error(f"Preview failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to preview data: {str(e)}"
+        )
+
+
+@app.get("/agents/available")
+async def get_available_agents():
+    """
+    Get list of available analysis agents and their capabilities
+    
+    Returns:
+        List of agents with descriptions and specialties
+    """
+    try:
+        available_agents = []
+        for agent_name, agent in agent_service.agents.items():
+            available_agents.append({
+                "name": agent.name,
+                "display_name": agent.display_name,
+                "description": agent.description,
+                "specialties": agent.specialties,
+                "keywords": agent.keywords,
+                "output_type": agent.output_type
+            })
+        
+        return {
+            "agents": available_agents,
+            "total_count": len(available_agents),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting available agents: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get available agents: {str(e)}"
         )
 
 

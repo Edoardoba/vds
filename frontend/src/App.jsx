@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import DataUpload from './pages/DataUpload'
-import AnalysisRequest from './pages/AnalysisRequest'
+import AnalysisResults from './pages/AnalysisResults'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
   return (
@@ -15,7 +16,11 @@ function App() {
         >
           <Routes>
             <Route path="/" element={<DataUpload />} />
-            <Route path="/analysis" element={<AnalysisRequest />} />
+            <Route path="/analysis-results" element={
+              <ErrorBoundary>
+                <AnalysisResults />
+              </ErrorBoundary>
+            } />
           </Routes>
         </motion.div>
       </div>
