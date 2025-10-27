@@ -3,7 +3,9 @@ import toast from 'react-hot-toast'
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: process.env.NODE_ENV === 'production' 
+    ? 'https://your-api-service-name.onrender.com'  // 👈 UPDATE THIS WITH YOUR RENDER URL
+    : '/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
