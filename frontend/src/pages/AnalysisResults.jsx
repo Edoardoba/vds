@@ -45,12 +45,20 @@ export default function AnalysisResults() {
     'customer_segmentation': Users,
     'cohort_analysis': Users,
     'marketing_roi_analysis': TrendingUp,
+    'customer_acquisition_cost_analysis': TrendingUp,
     
     // Sales & Revenue Analytics
     'sales_performance_analysis': LineChart,
     
     // Financial Analytics
     'profitability_analysis': LineChart,
+    'cash_flow_analysis': LineChart,
+    
+    // Small Business Focused Analytics
+    'employee_performance_analysis': Users,
+    'competitive_analysis': BarChart3,
+    'seasonal_business_planning': Activity,
+    'operational_bottleneck_detection': AlertCircle,
     
     // Risk & Fraud Analytics
     'anomaly_detection': AlertCircle,

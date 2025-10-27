@@ -565,6 +565,157 @@ agents:
       - "date"
     output_type: "forecast_model"
 
+# ========================================
+# SMALL BUSINESS FOCUSED ANALYTICS
+# ========================================
+
+  cash_flow_analysis:
+    name: "Cash Flow Analysis"
+    description: "Monitor cash flow patterns, predict cash needs, and optimize working capital for small and medium businesses"
+    specialties:
+      - "cash flow forecasting"
+      - "working capital optimization"
+      - "receivables analysis"
+      - "payables management"
+      - "liquidity planning"
+      - "cash flow gap analysis"
+    keywords:
+      - "cash flow"
+      - "receivables"
+      - "payables"
+      - "liquidity"
+      - "working capital"
+      - "payment"
+      - "collection"
+      - "cash gap"
+    required_columns:
+      - "date"
+      - "amount"
+    output_type: "cash_flow_report"
+
+  employee_performance_analysis:
+    name: "Employee Performance Analysis"
+    description: "Analyze workforce productivity, identify top performers, track performance trends, and optimize team efficiency for small businesses"
+    specialties:
+      - "productivity analysis"
+      - "performance benchmarking"
+      - "team efficiency optimization"
+      - "top performer identification"
+      - "training needs assessment"
+      - "workforce analytics"
+    keywords:
+      - "employee"
+      - "performance"
+      - "productivity"
+      - "workforce"
+      - "team"
+      - "efficiency"
+      - "staff"
+      - "worker"
+      - "hr"
+      - "human resources"
+    required_columns:
+      - "employee_id"
+    output_type: "performance_report"
+
+  competitive_analysis:
+    name: "Competitive Analysis"
+    description: "Analyze competitive positioning, market share, pricing strategies, and identify competitive advantages for small businesses"
+    specialties:
+      - "competitive positioning analysis"
+      - "market share assessment"
+      - "pricing comparison analysis"
+      - "competitive advantage identification"
+      - "competitor performance tracking"
+      - "market opportunity assessment"
+    keywords:
+      - "competitive"
+      - "competitor"
+      - "market share"
+      - "positioning"
+      - "pricing"
+      - "competition"
+      - "market"
+      - "benchmark"
+      - "rival"
+    required_columns:
+      - "competitor"
+    output_type: "competitive_report"
+
+  seasonal_business_planning:
+    name: "Seasonal Business Planning"
+    description: "Analyze seasonal patterns, optimize inventory and staffing for seasonal fluctuations, and develop strategic plans for peak and off-seasons"
+    specialties:
+      - "seasonal pattern analysis"
+      - "peak season optimization"
+      - "off-season planning"
+      - "inventory seasonal planning"
+      - "staffing level optimization"
+      - "revenue seasonality forecasting"
+    keywords:
+      - "seasonal"
+      - "season"
+      - "peak"
+      - "off-season"
+      - "holiday"
+      - "quarterly"
+      - "monthly"
+      - "cyclical"
+      - "pattern"
+      - "fluctuation"
+    required_columns:
+      - "date"
+    output_type: "seasonal_report"
+
+  customer_acquisition_cost_analysis:
+    name: "Customer Acquisition Cost Analysis"
+    description: "Analyze customer acquisition costs, optimize marketing spend efficiency, and maximize customer lifetime value for small business growth"
+    specialties:
+      - "customer acquisition cost optimization"
+      - "marketing channel roi analysis"
+      - "customer lifetime value calculation"
+      - "payback period analysis"
+      - "marketing spend efficiency"
+      - "acquisition funnel optimization"
+    keywords:
+      - "customer acquisition"
+      - "cac"
+      - "marketing cost"
+      - "acquisition cost"
+      - "customer lifetime value"
+      - "clv"
+      - "marketing roi"
+      - "acquisition channel"
+    required_columns:
+      - "marketing_cost"
+      - "customers_acquired"
+    output_type: "cac_analysis_report"
+
+  operational_bottleneck_detection:
+    name: "Operational Bottleneck Detection"
+    description: "Identify operational bottlenecks, analyze process inefficiencies, and provide optimization recommendations for small business operations"
+    specialties:
+      - "process bottleneck identification"
+      - "workflow optimization"
+      - "capacity utilization analysis"
+      - "throughput optimization"
+      - "resource allocation efficiency"
+      - "operational performance metrics"
+    keywords:
+      - "bottleneck"
+      - "process"
+      - "efficiency"
+      - "workflow"
+      - "throughput"
+      - "capacity"
+      - "utilization"
+      - "operations"
+      - "optimization"
+      - "performance"
+    required_columns:
+      - "process_time"
+    output_type: "bottleneck_report"
+
 # Agent selection configuration
 agent_selection:
   max_agents: 3  # Maximum number of agents to select for a single analysis

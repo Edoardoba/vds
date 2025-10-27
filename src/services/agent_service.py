@@ -49,15 +49,25 @@ class AgentService:
                 "customer_segmentation",
                 "cohort_analysis",
                 "marketing_roi_analysis",
+                "customer_acquisition_cost_analysis",
                 
                 # Sales & Revenue Analytics
                 "sales_performance_analysis",
                 
                 # Financial Analytics
                 "profitability_analysis",
+                "cash_flow_analysis",
+                
+                # Operational Analytics (SMB Focus)
+                "operational_bottleneck_detection",
+                "employee_performance_analysis",
+                "seasonal_business_planning",
                 
                 # Risk & Fraud Analytics
                 "anomaly_detection",
+                
+                # Competitive & Market Analytics (SMB Focus)
+                "competitive_analysis",
                 
                 # Advanced Analytics
                 "predictive_modeling",
