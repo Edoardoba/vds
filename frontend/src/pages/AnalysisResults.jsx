@@ -304,12 +304,121 @@ export default function AnalysisResults() {
             </motion.div>
           )}
 
+          {/* Visualizations Gallery */}
+          {analysisResult.agent_results && (
+            (() => {
+              // Collect all visualizations from all agents
+              const allVisualizations = analysisResult.agent_results
+                .filter(result => result.execution_result?.success && result.execution_result?.output_files)
+                .flatMap(result => 
+                  result.execution_result.output_files
+                    .filter(file => ['png', 'jpg', 'jpeg', 'svg'].includes(file.type))
+                    .map(file => ({
+                      ...file,
+                      agentName: result.agent_info?.display_name || result.agent_name.replace(/_/g, ' '),
+                      agentInsights: result.code_result?.insights || ''
+                    }))
+                )
+
+              return allVisualizations.length > 0 ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="max-w-6xl mx-auto mb-8"
+                >
+                  <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-pink-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl flex items-center justify-center">
+                          <BarChart3 className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-2xl font-bold text-gray-900">Data Visualizations</h3>
+                          <p className="text-gray-600">AI-generated charts and analysis insights</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-6">
+                      <div className="grid gap-8">
+                        {allVisualizations.map((viz, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.6 + index * 0.1 }}
+                            className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 p-6 shadow-sm"
+                          >
+                            {/* Chart Header */}
+                            <div className="flex items-center justify-between mb-4">
+                              <div>
+                                <h4 className="text-lg font-semibold text-gray-900 capitalize mb-1">
+                                  {viz.agentName}
+                                </h4>
+                                <p className="text-sm text-gray-600">{viz.filename}</p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const link = document.createElement('a')
+                                  link.href = `data:image/${viz.type};base64,${viz.content}`
+                                  link.download = viz.filename
+                                  link.click()
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm"
+                              >
+                                <Download className="w-4 h-4" />
+                                Download
+                              </button>
+                            </div>
+
+                            {/* Chart Image */}
+                            <div className="bg-white rounded-lg p-4 border border-gray-100 mb-4">
+                              <img
+                                src={`data:image/${viz.type};base64,${viz.content}`}
+                                alt={viz.filename}
+                                className="w-full max-w-5xl mx-auto rounded-lg shadow-sm"
+                                style={{ maxHeight: '500px', objectFit: 'contain' }}
+                              />
+                            </div>
+
+                            {/* Chart Explanation */}
+                            {viz.agentInsights && (
+                              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                                <h5 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                                  <Eye className="w-4 h-4" />
+                                  Chart Insights & Explanation
+                                </h5>
+                                <div className="text-blue-800 prose prose-blue max-w-none">
+                                  <ReactMarkdown
+                                    components={{
+                                      p: ({children}) => <p className="text-blue-800 mb-2 leading-relaxed">{children}</p>,
+                                      ul: ({children}) => <ul className="list-disc list-inside text-blue-800 mb-2 space-y-1">{children}</ul>,
+                                      li: ({children}) => <li className="text-blue-800 text-sm">{children}</li>,
+                                      strong: ({children}) => <strong className="font-semibold text-blue-900">{children}</strong>
+                                    }}
+                                  >
+                                    {viz.agentInsights}
+                                  </ReactMarkdown>
+                                </div>
+                              </div>
+                            )}
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              ) : null
+            })()
+          )}
+
           {/* Analysis Results */}
           {analysisResult.agent_results && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
+              transition={{ delay: 0.7 }}
               className="max-w-6xl mx-auto mb-8"
             >
               <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
@@ -397,17 +506,96 @@ export default function AnalysisResults() {
                               
                               {result.execution_result?.output_files?.length > 0 && (
                                 <div>
-                                  <h5 className="font-semibold text-gray-900 mb-2">Generated Files:</h5>
-                                  <div className="flex flex-wrap gap-2">
-                                    {result.execution_result.output_files.map((file, fileIndex) => (
-                                      <span 
-                                        key={fileIndex}
-                                        className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm"
-                                      >
-                                        {file.filename}
-                                      </span>
-                                    ))}
+                                  <h5 className="font-semibold text-gray-900 mb-4">Generated Visualizations & Reports:</h5>
+                                  
+                                  {/* Display Images */}
+                                  <div className="space-y-6 mb-6">
+                                    {result.execution_result.output_files
+                                      .filter(file => ['png', 'jpg', 'jpeg', 'svg'].includes(file.type))
+                                      .map((file, fileIndex) => (
+                                        <div key={fileIndex} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+                                          <div className="flex items-center gap-2 mb-3">
+                                            <BarChart3 className="w-5 h-5 text-indigo-600" />
+                                            <h6 className="font-medium text-gray-900">{file.filename}</h6>
+                                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                              {(file.size / 1024).toFixed(1)} KB
+                                            </span>
+                                          </div>
+                                          
+                                          {file.encoding === 'base64' && file.content && (
+                                            <div className="relative group">
+                                              <img
+                                                src={`data:image/${file.type};base64,${file.content}`}
+                                                alt={file.filename}
+                                                className="w-full max-w-4xl mx-auto rounded-lg shadow-lg border border-gray-200 bg-white"
+                                                style={{ maxHeight: '600px', objectFit: 'contain' }}
+                                              />
+                                              
+                                              {/* Download overlay on hover */}
+                                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                  onClick={() => {
+                                                    const link = document.createElement('a')
+                                                    link.href = `data:image/${file.type};base64,${file.content}`
+                                                    link.download = file.filename
+                                                    link.click()
+                                                  }}
+                                                  className="bg-white/90 backdrop-blur-sm text-gray-700 p-2 rounded-lg shadow-lg hover:bg-white transition-colors"
+                                                  title="Download chart"
+                                                >
+                                                  <Download className="w-4 h-4" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))
+                                    }
                                   </div>
+
+                                  {/* Display Text Files */}
+                                  <div className="space-y-4">
+                                    {result.execution_result.output_files
+                                      .filter(file => ['txt', 'md', 'csv'].includes(file.type))
+                                      .map((file, fileIndex) => (
+                                        <div key={fileIndex} className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <FileText className="w-5 h-5 text-gray-600" />
+                                            <h6 className="font-medium text-gray-900">{file.filename}</h6>
+                                          </div>
+                                          
+                                          {file.encoding === 'utf-8' && file.content && (
+                                            <div className="bg-white rounded p-3 text-sm text-gray-700 max-h-48 overflow-y-auto">
+                                              <pre className="whitespace-pre-wrap font-mono text-xs">
+                                                {file.content}
+                                              </pre>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))
+                                    }
+                                  </div>
+
+                                  {/* Other Files */}
+                                  {result.execution_result.output_files
+                                    .filter(file => !['png', 'jpg', 'jpeg', 'svg', 'txt', 'md', 'csv'].includes(file.type))
+                                    .length > 0 && (
+                                    <div className="mt-4">
+                                      <h6 className="font-medium text-gray-900 mb-2">Other Files:</h6>
+                                      <div className="flex flex-wrap gap-2">
+                                        {result.execution_result.output_files
+                                          .filter(file => !['png', 'jpg', 'jpeg', 'svg', 'txt', 'md', 'csv'].includes(file.type))
+                                          .map((file, fileIndex) => (
+                                            <span 
+                                              key={fileIndex}
+                                              className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm"
+                                            >
+                                              {file.filename}
+                                            </span>
+                                          ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
