@@ -1,28 +1,35 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-gunicorn==21.2.0
+# Production requirements for Render deployment
 
-boto3==1.34.0
-botocore==1.34.0
+# Web framework and server
+fastapi==0.115.5
+uvicorn[standard]==0.32.0
+gunicorn==23.0.0
+python-multipart==0.0.9
 
+# AWS SDK
+boto3==1.35.60
+botocore==1.35.60
+
+# Configuration & environment
 pydantic==2.9.2
-pydantic-settings==2.6.0
-python-dotenv==1.0.0          # or python-decouple==3.8 (choose one)
-# python-decouple==3.8
-
-httpx==0.25.2
-python-multipart==0.0.6
-PyYAML==6.0.1
+pydantic-settings==2.6.1
+python-decouple==3.8
+python-dotenv==1.0.1
+PyYAML==6.0.2
 structlog==23.2.0
 
-numpy==1.26.4
+# Data stack (Python 3.13 compatible)
+numpy==2.1.2
 pandas==2.2.3
-scipy==1.11.4                 # added for sklearn/statsmodels
-patsy==0.5.6                  # added for statsmodels
-scikit-learn==1.3.2
-statsmodels==0.14.1
-
-matplotlib==3.8.2
-seaborn==0.13.0
-openpyxl==3.1.2
+scipy==1.14.1
+scikit-learn==1.5.2
+statsmodels==0.14.4
+openpyxl==3.1.5
 xlrd==2.0.1
+
+# Visualization
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# Networking
+httpx==0.27.2
