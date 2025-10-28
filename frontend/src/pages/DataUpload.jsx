@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -24,6 +24,8 @@ import {
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import { apiEndpoints } from '../utils/api'
+import AgentResultsTabs from '../components/AgentResultsTabs'
+import useWebSocket from '../hooks/useWebSocket'
 
 export default function DataUpload() {
   const navigate = useNavigate()
@@ -38,6 +40,59 @@ export default function DataUpload() {
   const [showPlanModal, setShowPlanModal] = useState(false)
   const [plannedAgents, setPlannedAgents] = useState([]) // array of {name, display_name, description, ...}
   const [selectedAgentNames, setSelectedAgentNames] = useState([]) // array of names
+  const [showAgentTabs, setShowAgentTabs] = useState(false)
+  const [analysisProgress, setAnalysisProgress] = useState(null)
+
+  // WebSocket connection for real-time progress
+  const getWebSocketUrl = () => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
+    return baseUrl.replace('http', 'ws') + '/ws/progress'
+  }
+  
+  const { isConnected, lastMessage } = useWebSocket(getWebSocketUrl())
+
+  // Handle WebSocket progress updates
+  useEffect(() => {
+    if (lastMessage && showAgentTabs) {
+      setAnalysisProgress(prev => {
+        const newProgress = { ...prev }
+        
+        switch (lastMessage.type) {
+          case 'agent_started':
+            newProgress.currentAgent = lastMessage.agent_name
+            newProgress.progress = lastMessage.progress
+            break
+            
+          case 'code_generated':
+            newProgress.progress = lastMessage.progress
+            break
+            
+          case 'agent_completed':
+            // Add the result with success status
+            const result = {
+              ...lastMessage.result,
+              success: lastMessage.success !== false // Default to true if not specified
+            }
+            newProgress.completedAgents = [...(newProgress.completedAgents || []), result]
+            newProgress.currentAgent = null
+            newProgress.progress = lastMessage.progress
+            break
+            
+          case 'agent_error':
+            newProgress.completedAgents = [...(newProgress.completedAgents || []), {
+              agent_name: lastMessage.agent_name,
+              success: false,
+              error: lastMessage.error
+            }]
+            newProgress.currentAgent = null
+            newProgress.progress = lastMessage.progress
+            break
+        }
+        
+        return newProgress
+      })
+    }
+  }, [lastMessage, showAgentTabs])
 
   const onDrop = useCallback((acceptedFiles) => {
     const newFiles = acceptedFiles.map(file => ({
@@ -230,8 +285,22 @@ export default function DataUpload() {
       toast.error('No successfully uploaded files found')
       return
     }
+
+    // Close plan modal and show agent tabs
+    setShowPlanModal(false)
+    setShowAgentTabs(true)
     setIsAnalyzing(true)
+
+    // Initialize progress tracking
+    setAnalysisProgress({
+      currentAgent: null,
+      progress: 0,
+      completedAgents: [],
+      startTime: new Date().toISOString()
+    })
+
     try {
+      // Call the actual API - progress will come via WebSocket
       const response = await apiEndpoints.analyzeData(
         fileToAnalyze,
         query.trim(),
@@ -241,18 +310,32 @@ export default function DataUpload() {
         selectedAgentNames
       )
 
-      navigate('/analysis-results', {
-        state: {
-          analysisResult: response.data,
-          userQuestion: query.trim()
-        }
-      })
+      // Wait a bit for final WebSocket updates, then navigate
+      setTimeout(() => {
+        navigate('/analysis-results', {
+          state: {
+            analysisResult: response.data,
+            userQuestion: query.trim()
+          }
+        })
+      }, 2000)
+
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Analysis failed'
       toast.error(errorMessage)
+      
+      // Update progress to show error
+      setAnalysisProgress(prev => ({
+        ...prev,
+        currentAgent: null,
+        completedAgents: [...prev.completedAgents, {
+          agent_name: 'error',
+          success: false,
+          error: errorMessage
+        }]
+      }))
     } finally {
       setIsAnalyzing(false)
-      setShowPlanModal(false)
     }
   }
 
@@ -262,6 +345,11 @@ export default function DataUpload() {
     setUploadedFiles([])
     setQuery('')
     setAnalysisResult(null)
+  }
+
+  const closeAgentTabs = () => {
+    setShowAgentTabs(false)
+    setAnalysisProgress(null)
   }
 
   return (
@@ -676,6 +764,18 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
         )}
       </AnimatePresence>
 
+      {/* Agent Results Tabs */}
+      <AnimatePresence>
+        {showAgentTabs && (
+          <AgentResultsTabs
+            selectedAgents={plannedAgents.filter(agent => selectedAgentNames.includes(agent.name))}
+            analysisProgress={analysisProgress}
+            onClose={closeAgentTabs}
+            isAnalyzing={isAnalyzing}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Analysis Results */}
       {analysisResult && (
         <div className="px-6 pb-12">
@@ -734,7 +834,7 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="absolute inset-0 bg-black/40" onClick={() => !isAnalyzing && setShowPlanModal(false)} />
+            <div className="absolute inset-0 bg-black/40" onClick={() => !isAnalyzing && !isPlanning && setShowPlanModal(false)} />
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
@@ -746,14 +846,47 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
                   <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
                     <Brain className="w-5 h-5 text-white" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">Planned Agents</h3>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">
+                      {isPlanning ? 'Analyzing Request...' : 'Planned Agents'}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {isPlanning 
+                        ? 'Understanding which agents are needed for your analysis' 
+                        : 'Review and deselect any you don\'t need'
+                      }
+                    </p>
+                  </div>
                 </div>
-                <span className="text-sm text-gray-500">Review and deselect any you don't need</span>
+                {!isPlanning && (
+                  <span className="text-sm text-gray-500">Review and deselect any you don't need</span>
+                )}
               </div>
               <div className="p-6 max-h-[60vh] overflow-y-auto">
                 {isPlanning ? (
-                  <div className="flex items-center gap-3 text-gray-600">
-                    <Loader className="w-5 h-5 animate-spin" /> Planning agents...
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-600">
+                    <div className="relative">
+                      <div className="w-16 h-16 border-4 border-gray-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <motion.div
+                          animate={{ 
+                            scale: [1, 1.1, 1],
+                            opacity: [0.7, 1, 0.7]
+                          }}
+                          transition={{ 
+                            duration: 2,
+                            repeat: Infinity,
+                            ease: "easeInOut"
+                          }}
+                        >
+                          <Brain className="w-6 h-6 text-indigo-600" />
+                        </motion.div>
+                      </div>
+                    </div>
+                    <div className="mt-4 text-center">
+                      <p className="text-lg font-semibold text-gray-800">Analyzing Your Request</p>
+                      <p className="text-sm text-gray-600 mt-1">Understanding which agents are needed for your analysis...</p>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -779,8 +912,8 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
               <div className="p-6 border-t border-gray-100 flex items-center justify-between">
                 <button
                   onClick={() => setShowPlanModal(false)}
-                  className="px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100"
-                  disabled={isAnalyzing}
+                  className="px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isAnalyzing || isPlanning}
                 >
                   Cancel
                 </button>
@@ -788,7 +921,7 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={confirmRunWithSelection}
-                  disabled={isAnalyzing || selectedAgentNames.length === 0}
+                  disabled={isAnalyzing || isPlanning || selectedAgentNames.length === 0}
                   className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isAnalyzing ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} 

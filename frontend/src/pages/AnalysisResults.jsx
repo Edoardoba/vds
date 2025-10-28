@@ -36,7 +36,6 @@ export default function AnalysisResults() {
     // Core Data Operations
     'data_quality_audit': CheckCircle,
     'exploratory_data_analysis': BarChart3,
-    'business_intelligence_dashboard': PieChart,
     'data_cleaning': Sparkles,
     'data_visualization': BarChart3,
     
