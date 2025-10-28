@@ -272,8 +272,7 @@ class ClaudeService:
         if self.agent_configs:
             # Prefer these agents in order of preference
             preferred_agents = [
-                "data_quality_audit", "exploratory_data_analysis", "statistical_analysis",
-                "business_intelligence_dashboard"
+                "data_quality_audit", "exploratory_data_analysis", "statistical_analysis"
             ]
             
             # Return all available agents from preferred list (no arbitrary limit)
@@ -458,7 +457,7 @@ You are an expert data analyst tasked with selecting the most appropriate AI ana
 - Data Preparation: data_quality_audit, data_cleaning
 - Exploration: exploratory_data_analysis, data_visualization  
 - Analysis: statistical_analysis, regression_analysis, predictive_modeling, specialized analysis agents
-- Reporting: business_intelligence_dashboard
+- Reporting: data_visualization, statistical_analysis
 
 Respond with ONLY a JSON array of agent names (order will be resolved automatically):
 

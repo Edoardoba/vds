@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     CLAUDE_MAX_TOKENS: int = int(os.getenv("CLAUDE_MAX_TOKENS", "4000"))
     CLAUDE_TEMPERATURE: float = float(os.getenv("CLAUDE_TEMPERATURE", "0.1"))
     
+    # Mock Configuration
+    AGENT_MOCK: bool = os.getenv("AGENT_MOCK", "false").lower() in ["true", "1", "yes"]
+    
     if PYDANTIC_V2:
         model_config = ConfigDict(
             env_file=".env",

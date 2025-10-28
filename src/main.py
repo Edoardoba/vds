@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -6,10 +6,14 @@ from typing import Optional
 import logging
 from datetime import datetime
 from io import BytesIO
+import json
+import asyncio
 
 from config import settings
 from services.s3_service import S3Service
 from services.agent_service import AgentService
+from services.langgraph_workflow import LangGraphMultiAgentWorkflow
+from services.langgraph_websocket import LangGraphWebSocketManager
 from utils.validators import validate_data_file
 from utils.data_processor import clean_nan_values
 
@@ -93,11 +97,53 @@ async def log_requests(request, call_next):
 s3_service = S3Service()
 agent_service = AgentService()
 
+# Initialize LangGraph workflow (will be initialized after WebSocket manager)
+langgraph_workflow = None
+langgraph_websocket_manager = None
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_progress(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json.dumps(message))
+            except:
+                # Remove disconnected connections
+                self.active_connections.remove(connection)
+
+manager = ConnectionManager()
+
+# Initialize LangGraph workflow with WebSocket manager
+langgraph_websocket_manager = LangGraphWebSocketManager(manager)
+langgraph_workflow = LangGraphMultiAgentWorkflow(langgraph_websocket_manager)
+
 
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"message": "CSV Upload Service is running", "timestamp": datetime.utcnow().isoformat()}
+    return {"message": "", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.websocket("/ws/progress")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time analysis progress updates"""
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 
 @app.get("/health")
@@ -299,7 +345,12 @@ async def analyze_data(
             except Exception:
                 selected_agents_list = None
 
-        analysis_result = await agent_service.analyze_request(
+        # Create progress callback for WebSocket updates
+        async def progress_callback(progress_data):
+            await manager.send_progress(progress_data)
+        
+        # Use LangGraph workflow for analysis
+        analysis_result = await langgraph_workflow.run_analysis(
             file_content=file_content,
             filename=file.filename,
             user_question=question.strip(),

@@ -1,0 +1,604 @@
+import React from 'react'
+import { motion } from 'framer-motion'
+import { 
+  CheckCircle, 
+  Clock, 
+  Loader, 
+  XCircle, 
+  ArrowRight,
+  Database,
+  Brain,
+  BarChart3,
+  TrendingUp,
+  FileText,
+  AlertCircle,
+  Users
+} from 'lucide-react'
+
+// Agent descriptions mapping (defined outside component to avoid hoisting issues)
+const AGENT_DESCRIPTIONS = {
+  'data_quality_audit': 'Analyzing data quality',
+  'exploratory_data_analysis': 'Initial data exploration',
+  'data_visualization': 'Creating charts and graphs',
+  'statistical_analysis': 'Statistical computations',
+  'churn_prediction': 'Predicting customer churn',
+  'customer_segmentation': 'Segmenting customers',
+  'sales_performance_analysis': 'Analyzing sales performance',
+  'marketing_roi_analysis': 'Marketing ROI analysis',
+  'time_series_analysis': 'Time series forecasting',
+  'anomaly_detection': 'Detecting anomalies',
+  'predictive_modeling': 'Building predictive models',
+  'cohort_analysis': 'Cohort analysis',
+  'profitability_analysis': 'Profitability analysis',
+  'cash_flow_analysis': 'Cash flow analysis',
+  'employee_performance_analysis': 'Employee performance analysis',
+  'competitive_analysis': 'Competitive analysis',
+  'seasonal_business_planning': 'Seasonal planning',
+  'operational_bottleneck_detection': 'Detecting bottlenecks',
+  'customer_acquisition_cost_analysis': 'CAC analysis',
+  'ab_testing_analysis': 'A/B testing analysis'
+}
+
+// Agent icons mapping (defined outside component to avoid hoisting issues)
+const AGENT_ICONS = {
+  'data_quality_audit': CheckCircle,
+  'exploratory_data_analysis': BarChart3,
+  'data_visualization': BarChart3,
+  'statistical_analysis': TrendingUp,
+  'churn_prediction': TrendingUp,
+  'customer_segmentation': Users,
+  'sales_performance_analysis': TrendingUp,
+  'marketing_roi_analysis': TrendingUp,
+  'time_series_analysis': TrendingUp,
+  'anomaly_detection': AlertCircle,
+  'predictive_modeling': Brain,
+  'cohort_analysis': Users,
+  'profitability_analysis': TrendingUp,
+  'cash_flow_analysis': TrendingUp,
+  'employee_performance_analysis': Users,
+  'competitive_analysis': BarChart3,
+  'seasonal_business_planning': TrendingUp,
+  'operational_bottleneck_detection': AlertCircle,
+  'customer_acquisition_cost_analysis': TrendingUp,
+  'ab_testing_analysis': TrendingUp
+}
+
+// Helper function to get agent descriptions (function declaration for proper hoisting)
+function getAgentDescription(agentName) {
+  return AGENT_DESCRIPTIONS[agentName] || 'AI analysis agent'
+}
+
+// Helper function to get agent icons (function declaration for proper hoisting)
+function getAgentIcon(agentName) {
+  return AGENT_ICONS[agentName] || Brain
+}
+
+const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], className = "" }) => {
+  // Define the core workflow steps that always happen
+  const coreWorkflowSteps = [
+    {
+      id: 'data_processor',
+      name: 'Data Processing',
+      description: 'Processing uploaded data',
+      icon: Database,
+      progress: 10
+    }
+    // Removed 'agent_selector' step since agents are already selected by user
+  ]
+
+  // Create dynamic workflow steps based on selected agents and actual execution order
+  const createDynamicWorkflowSteps = () => {
+    const steps = []
+    
+    // Add data processing step
+    steps.push({
+      id: 'data_processor',
+      name: 'Data Processing',
+      description: 'Processing uploaded data',
+      icon: Database,
+      progress: 10
+    })
+    
+    // Add user-selected agents as workflow steps
+    if (selectedAgents && selectedAgents.length > 0) {
+      selectedAgents.forEach((agent, index) => {
+        const agentStep = {
+          id: agent,
+          name: agent.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          description: getAgentDescription(agent),
+          icon: getAgentIcon(agent),
+          progress: 20 + (index * (70 / selectedAgents.length)) // Use 70% for agents (20% to 90%)
+        }
+        steps.push(agentStep)
+      })
+    } else {
+      // Fallback to default workflow if no agents selected
+      steps.push(
+        {
+          id: 'data_quality_audit',
+          name: 'Data Quality Audit',
+          description: 'Analyzing data quality',
+          icon: CheckCircle,
+          progress: 30
+        },
+        {
+          id: 'exploratory_analysis',
+          name: 'Exploratory Analysis',
+          description: 'Initial data exploration',
+          icon: BarChart3,
+          progress: 50
+        },
+        {
+          id: 'data_visualization',
+          name: 'Data Visualization',
+          description: 'Creating charts and graphs',
+          icon: BarChart3,
+          progress: 70
+        }
+      )
+    }
+    
+    // Always add report generation at the end
+    steps.push({
+      id: 'report_generator',
+      name: 'Report Generation',
+      description: 'Generating final report',
+      icon: FileText,
+      progress: 100
+    })
+    
+    return steps
+  }
+
+  const workflowSteps = createDynamicWorkflowSteps()
+
+
+  // Determine step status based on progress and current agent
+  const getStepStatus = (step) => {
+    if (!analysisProgress) return 'pending'
+    
+    const currentProgress = analysisProgress.progress || 0
+    const completedSteps = analysisProgress.completedSteps || []
+    const completedAgents = analysisProgress.completedAgents || []
+    const currentAgent = analysisProgress.currentAgent
+    
+    // Check if step is completed (either in completedSteps or completedAgents)
+    if (completedSteps.includes(step.id) || 
+        completedAgents.some(agent => agent.agent_name === step.id)) {
+      return 'completed'
+    }
+    
+    // Check for errors in the analysis progress
+    if (analysisProgress.errors && analysisProgress.errors.some(error => 
+      error.toLowerCase().includes(step.id) || step.id.includes(error.toLowerCase())
+    )) {
+      return 'error'
+    }
+    
+    // Check if step is currently running
+    if (currentAgent === step.id) {
+      return 'running'
+    }
+    
+    // Check if step should be active based on progress
+    if (currentProgress >= step.progress - 10) {
+      return 'active'
+    }
+    
+    return 'pending'
+  }
+
+  // Get step status
+  const getStepStatusInfo = (status) => {
+    switch (status) {
+      case 'completed':
+        return {
+          icon: CheckCircle,
+          color: 'text-green-500',
+          bgColor: 'bg-green-100',
+          borderColor: 'border-green-300',
+          pulse: false
+        }
+      case 'running':
+        return {
+          icon: Loader,
+          color: 'text-blue-500',
+          bgColor: 'bg-blue-100',
+          borderColor: 'border-blue-300',
+          pulse: true
+        }
+      case 'active':
+        return {
+          icon: Clock,
+          color: 'text-indigo-500',
+          bgColor: 'bg-indigo-100',
+          borderColor: 'border-indigo-300',
+          pulse: false
+        }
+      case 'error':
+        return {
+          icon: XCircle,
+          color: 'text-red-500',
+          bgColor: 'bg-red-100',
+          borderColor: 'border-red-300',
+          pulse: false
+        }
+      default:
+        return {
+          icon: Clock,
+          color: 'text-gray-400',
+          bgColor: 'bg-gray-100',
+          borderColor: 'border-gray-200',
+          pulse: false
+        }
+    }
+  }
+
+  if (!analysisProgress) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="p-6 text-center text-gray-500">
+          <Clock className="w-8 h-8 mx-auto mb-2" />
+          <p>Waiting for analysis to start...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`}>
+      <div className="p-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">Analysis Workflow</h3>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>Progress:</span>
+            <span className="font-medium text-indigo-600">
+              {Math.round(analysisProgress.progress || 0)}%
+            </span>
+          </div>
+        </div>
+      </div>
+      
+      <div className="p-6">
+        {/* Horizontal Workflow Tree */}
+        <div className="relative overflow-x-auto">
+          <div className="flex items-center gap-4 min-w-max">
+            {workflowSteps.map((step, index) => {
+              const status = getStepStatus(step)
+              const statusInfo = getStepStatusInfo(status)
+              const IconComponent = statusInfo.icon
+              const isLast = index === workflowSteps.length - 1
+              
+              return (
+                <React.Fragment key={step.id}>
+                  {/* Step Node */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: index * 0.1 }}
+                    className={`relative flex flex-col items-center group ${statusInfo.pulse ? 'animate-pulse' : ''}`}
+                  >
+                    {/* Step Circle */}
+                    <motion.div
+                      className={`
+                        w-16 h-16 rounded-full border-2 flex items-center justify-center
+                        ${statusInfo.bgColor} ${statusInfo.borderColor}
+                        transition-all duration-300
+                        ${status === 'running' ? 'shadow-lg shadow-blue-200' : ''}
+                        ${status === 'completed' ? 'shadow-md shadow-green-200' : ''}
+                        ${status === 'active' ? 'shadow-md shadow-indigo-200' : ''}
+                      `}
+                      whileHover={{ scale: 1.05 }}
+                      animate={
+                        status === 'running' 
+                          ? { 
+                              scale: [1, 1.05, 1],
+                              boxShadow: [
+                                '0 0 0 0 rgba(59, 130, 246, 0.4)',
+                                '0 0 0 10px rgba(59, 130, 246, 0)',
+                                '0 0 0 0 rgba(59, 130, 246, 0)'
+                              ]
+                            }
+                          : status === 'completed'
+                          ? { scale: 1 }
+                          : {}
+                      }
+                      transition={
+                        status === 'running' 
+                          ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                          : { duration: 0.3 }
+                      }
+                    >
+                      <IconComponent 
+                        className={`w-7 h-7 ${statusInfo.color} ${
+                          status === 'running' ? 'animate-spin' : ''
+                        }`} 
+                      />
+                    </motion.div>
+                    
+                    {/* Step Label */}
+                    <div className="mt-2 text-center max-w-20">
+                      <p className={`text-xs font-medium ${
+                        status === 'completed' ? 'text-green-700' :
+                        status === 'running' ? 'text-blue-700' :
+                        status === 'active' ? 'text-indigo-700' :
+                        'text-gray-500'
+                      }`}>
+                        {step.name}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1 leading-tight">
+                        {step.description}
+                      </p>
+                    </div>
+                    
+                    {/* Progress Indicator */}
+                    {status === 'running' && (
+                      <motion.div
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center"
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                      >
+                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                      </motion.div>
+                    )}
+                    
+                    {/* Completion Checkmark */}
+                    {status === 'completed' && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center"
+                      >
+                        <CheckCircle className="w-3 h-3 text-white" />
+                      </motion.div>
+                    )}
+                    
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                      <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap">
+                        <div className="font-medium">{step.name}</div>
+                        <div className="text-gray-300">{step.description}</div>
+                        <div className="text-gray-400 mt-1">
+                          Status: {status.charAt(0).toUpperCase() + status.slice(1)}
+                        </div>
+                      </div>
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </motion.div>
+                  
+                  {/* Arrow Connector */}
+                  {!isLast && (
+                    <motion.div
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ delay: index * 0.1 + 0.2, duration: 0.3 }}
+                      className="flex-1 flex items-center justify-center mx-2"
+                    >
+                      <div className="flex-1 h-0.5 bg-gray-200 relative overflow-hidden">
+                        <motion.div
+                          className="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-400 to-purple-500 rounded-full"
+                          initial={{ width: '0%' }}
+                          animate={{ 
+                            width: getStepStatus(workflowSteps[index + 1]) === 'completed' ? '100%' : 
+                                   getStepStatus(workflowSteps[index]) === 'completed' ? '100%' : 
+                                   getStepStatus(workflowSteps[index]) === 'running' ? '50%' : '0%'
+                          }}
+                          transition={{ duration: 0.8, delay: index * 0.1 }}
+                        />
+                        
+                        {/* Animated flow effect */}
+                        {getStepStatus(workflowSteps[index]) === 'running' && (
+                          <motion.div
+                            className="absolute top-0 left-0 h-full w-4 bg-gradient-to-r from-transparent via-white to-transparent opacity-60"
+                            animate={{ x: ['-100%', '100%'] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                          />
+                        )}
+                        
+                        <motion.div
+                          animate={{ 
+                            opacity: getStepStatus(workflowSteps[index]) === 'completed' ? 1 : 0.3,
+                            scale: getStepStatus(workflowSteps[index]) === 'running' ? [1, 1.1, 1] : 1
+                          }}
+                          transition={{ duration: 1, repeat: getStepStatus(workflowSteps[index]) === 'running' ? Infinity : 0 }}
+                        >
+                          <ArrowRight className="w-4 h-4 text-gray-400 absolute right-0 top-1/2 transform -translate-y-1/2 translate-x-1/2" />
+                        </motion.div>
+                      </div>
+                    </motion.div>
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </div>
+        </div>
+        
+        {/* Current Step Info */}
+        {analysisProgress.currentAgent && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200"
+          >
+            <div className="flex items-center gap-3">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              >
+                <Loader className="w-5 h-5 text-blue-500" />
+              </motion.div>
+              <div className="flex-1">
+                <p className="font-medium text-blue-900">
+                  Currently Running: {analysisProgress.currentAgent.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </p>
+                {analysisProgress.message && (
+                  <p className="text-sm text-blue-700 mt-1">{analysisProgress.message}</p>
+                )}
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="flex-1 bg-blue-200 rounded-full h-1.5">
+                    <motion.div
+                      className="bg-blue-500 h-1.5 rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${analysisProgress.progress || 0}%` }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  </div>
+                  <span className="text-xs text-blue-600 font-medium">
+                    {Math.round(analysisProgress.progress || 0)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        
+        {/* Error Display */}
+        {analysisProgress.errors && analysisProgress.errors.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="font-medium text-red-900">Analysis Errors:</p>
+                <ul className="text-sm text-red-700 mt-1 space-y-1">
+                  {analysisProgress.errors.map((error, index) => (
+                    <li key={index}>• {error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        
+        {/* Individual Agent Results */}
+        {analysisProgress.completedAgents && analysisProgress.completedAgents.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6"
+          >
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">Agent Results</h4>
+            <div className="space-y-3">
+              {analysisProgress.completedAgents.map((agentResult, index) => {
+                const IconComponent = getAgentIcon(agentResult.agent_name)
+                const isSuccess = agentResult.success !== false
+                
+                return (
+                  <motion.div
+                    key={agentResult.agent_name}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className={`p-4 rounded-lg border ${
+                      isSuccess 
+                        ? 'border-green-200 bg-green-50' 
+                        : 'border-red-200 bg-red-50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-lg ${
+                        isSuccess ? 'bg-green-100' : 'bg-red-100'
+                      }`}>
+                        <IconComponent className={`w-5 h-5 ${
+                          isSuccess ? 'text-green-600' : 'text-red-600'
+                        }`} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h5 className="font-medium text-gray-900">
+                            {agentResult.agent_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </h5>
+                          <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            isSuccess 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {isSuccess ? 'Completed' : 'Failed'}
+                          </div>
+                        </div>
+                        
+                        {isSuccess && agentResult.execution_result?.insights && (
+                          <div className="text-sm text-gray-700 mb-2">
+                            <strong>Insights:</strong> {agentResult.execution_result.insights}
+                          </div>
+                        )}
+                        
+                        {!isSuccess && agentResult.error && (
+                          <div className="text-sm text-red-700">
+                            <strong>Error:</strong> {agentResult.error}
+                          </div>
+                        )}
+                        
+                        {isSuccess && agentResult.execution_result?.output_files && (
+                          <div className="text-xs text-gray-600 mt-2">
+                            Generated {agentResult.execution_result.output_files.length} output file(s)
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+        
+        {/* Final Report */}
+        {analysisProgress.finalReport && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <FileText className="w-5 h-5 text-green-600" />
+              </div>
+              <h4 className="text-lg font-semibold text-green-900">Final Report Generated</h4>
+            </div>
+            <p className="text-sm text-green-700">
+              Analysis completed successfully! The final report contains comprehensive insights from all agents.
+            </p>
+            {analysisProgress.finalReport.summary && (
+              <div className="mt-3 p-3 bg-white rounded border border-green-200">
+                <p className="text-sm text-gray-700">
+                  <strong>Summary:</strong> {analysisProgress.finalReport.summary}
+                </p>
+              </div>
+            )}
+          </motion.div>
+        )}
+        
+        {/* Completed Steps Summary */}
+        {analysisProgress.completedSteps && analysisProgress.completedSteps.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4"
+          >
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm text-gray-600">Completed:</span>
+              {analysisProgress.completedSteps.map((step, index) => (
+                <motion.span
+                  key={step}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium"
+                >
+                  {step.replace(/_/g, ' ')}
+                </motion.span>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default WorkflowVisualization

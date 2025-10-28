@@ -12,18 +12,90 @@ import {
   Sparkles,
   XCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ArrowRight
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import WorkflowVisualization from './WorkflowVisualization'
+
+// Agent descriptions mapping (defined as a constant to avoid hoisting issues)
+const AGENT_DESCRIPTIONS = {
+  'data_quality_audit': 'Analyzing data quality',
+  'exploratory_data_analysis': 'Initial data exploration',
+  'data_visualization': 'Creating charts and graphs',
+  'statistical_analysis': 'Statistical computations',
+  'churn_prediction': 'Predicting customer churn',
+  'customer_segmentation': 'Segmenting customers',
+  'sales_performance_analysis': 'Analyzing sales performance',
+  'marketing_roi_analysis': 'Marketing ROI analysis',
+  'time_series_analysis': 'Time series forecasting',
+  'anomaly_detection': 'Detecting anomalies',
+  'predictive_modeling': 'Building predictive models',
+  'cohort_analysis': 'Cohort analysis',
+  'profitability_analysis': 'Profitability analysis',
+  'cash_flow_analysis': 'Cash flow analysis',
+  'employee_performance_analysis': 'Employee performance analysis',
+  'competitive_analysis': 'Competitive analysis',
+  'seasonal_business_planning': 'Seasonal planning',
+  'operational_bottleneck_detection': 'Detecting bottlenecks',
+  'customer_acquisition_cost_analysis': 'CAC analysis',
+  'ab_testing_analysis': 'A/B testing analysis'
+}
+
+// Helper function to get agent descriptions (function declaration for proper hoisting)
+function getAgentDescription(agentName) {
+  return AGENT_DESCRIPTIONS[agentName] || 'AI analysis agent'
+}
 
 const AgentResultsTabs = ({ 
-  selectedAgents, 
+  selectedAgents = [], 
   analysisProgress, 
   onClose,
-  isAnalyzing 
+  isAnalyzing,
+  navigate
 }) => {
   const [activeTab, setActiveTab] = useState(0)
   const [agentStatuses, setAgentStatuses] = useState({})
+
+  // Debug logging
+  console.log('AgentResultsTabs rendering with:', {
+    selectedAgents: selectedAgents?.length,
+    hasAnalysisProgress: !!analysisProgress,
+    isAnalyzing,
+    hasNavigate: !!navigate
+  })
+
+  // Safety check
+  if (!selectedAgents || selectedAgents.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-white flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">No Agents Selected</h2>
+          <p className="text-gray-600 mb-4">Please select at least one agent to run analysis.</p>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Additional safety check for analysisProgress
+  if (!analysisProgress) {
+    return (
+      <div className="fixed inset-0 bg-white flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 text-blue-500 mx-auto mb-4 animate-spin" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Initializing Analysis...</h2>
+          <p className="text-gray-600 mb-4">Setting up the analysis workflow.</p>
+        </div>
+      </div>
+    )
+  }
 
   // Navigation functions
   const goToPreviousTab = () => {
@@ -53,8 +125,8 @@ const AgentResultsTabs = ({
   // Initialize agent statuses
   useEffect(() => {
     const initialStatuses = {}
-    selectedAgents.forEach((agent, index) => {
-      initialStatuses[agent.name] = {
+    selectedAgents.forEach((agentName, index) => {
+      initialStatuses[agentName] = {
         status: 'pending', // pending, running, completed, error
         progress: 0,
         result: null,
@@ -66,19 +138,22 @@ const AgentResultsTabs = ({
     setAgentStatuses(initialStatuses)
   }, [selectedAgents])
 
-  // Update agent statuses based on analysis progress
+  // Update agent statuses based on analysis progress (LangGraph enhanced)
   useEffect(() => {
     if (analysisProgress) {
       setAgentStatuses(prev => {
         const updated = { ...prev }
         
-        // Update based on analysis progress
+        // Update based on analysis progress - handle currentAgent properly
         if (analysisProgress.currentAgent) {
-          updated[analysisProgress.currentAgent] = {
-            ...updated[analysisProgress.currentAgent],
-            status: 'running',
-            progress: analysisProgress.progress || 0,
-            startTime: analysisProgress.startTime
+          const currentAgentName = analysisProgress.currentAgent
+          if (updated[currentAgentName]) {
+            updated[currentAgentName] = {
+              ...updated[currentAgentName],
+              status: 'running',
+              progress: analysisProgress.progress || 0,
+              startTime: analysisProgress.startTime || new Date().toISOString()
+            }
           }
         }
 
@@ -141,10 +216,10 @@ const AgentResultsTabs = ({
     }
   }
 
-  const renderAgentResult = (agent) => {
-    const status = agentStatuses[agent.name]?.status || 'pending'
-    const result = agentStatuses[agent.name]?.result
-    const error = agentStatuses[agent.name]?.error
+  const renderAgentResult = (agentName) => {
+    const status = agentStatuses[agentName]?.status || 'pending'
+    const result = agentStatuses[agentName]?.result
+    const error = agentStatuses[agentName]?.error
 
     if (status === 'pending') {
       return (
@@ -159,13 +234,20 @@ const AgentResultsTabs = ({
     }
 
     if (status === 'running') {
-      const progress = agentStatuses[agent.name]?.progress || 0
+      const progress = agentStatuses[agentName]?.progress || 0
       return (
         <div className="flex items-center justify-center h-64">
           <div className="text-center max-w-md">
             <Loader className="w-12 h-12 mx-auto mb-4 text-blue-500 animate-spin" />
             <p className="text-lg font-medium text-blue-700 mb-2">Analyzing...</p>
-            <p className="text-sm text-gray-600 mb-4">{agent.description}</p>
+            <p className="text-sm text-gray-600 mb-4">{(() => {
+              try {
+                return getAgentDescription(agentName) || 'AI analysis agent'
+              } catch (error) {
+                console.error('Error getting agent description:', error)
+                return 'AI analysis agent'
+              }
+            })()}</p>
             
             <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
               <motion.div
@@ -182,7 +264,7 @@ const AgentResultsTabs = ({
     }
 
     if (status === 'error') {
-      const errorMessage = agentStatuses[agent.name]?.error || 'An error occurred during analysis'
+      const errorMessage = agentStatuses[agentName]?.error || 'An error occurred during analysis'
       return (
         <div className="flex items-center justify-center h-64 text-red-600">
           <div className="text-center">
@@ -203,7 +285,14 @@ const AgentResultsTabs = ({
               <CheckCircle className="w-5 h-5 text-green-500" />
               <span className="font-semibold text-green-800">Analysis Complete</span>
             </div>
-            <p className="text-sm text-green-700">{agent.description}</p>
+            <p className="text-sm text-green-700">{(() => {
+              try {
+                return getAgentDescription(agentName) || 'AI analysis agent'
+              } catch (error) {
+                console.error('Error getting agent description:', error)
+                return 'AI analysis agent'
+              }
+            })()}</p>
           </div>
 
           {/* Results */}
@@ -270,35 +359,47 @@ const AgentResultsTabs = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="w-full max-w-6xl h-5/6 bg-white rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
+        <div className="p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center flex-shrink-0">
                 <Brain className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Agent Analysis Progress</h2>
-                <p className="text-sm text-gray-600">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Agent Analysis Progress</h2>
+                <p className="text-sm text-gray-600 truncate">
                   {isAnalyzing ? 'Analysis in progress...' : 'Analysis completed'}
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 ml-2"
+              title="Close"
             >
               <XCircle className="w-5 h-5" />
             </button>
           </div>
         </div>
+
+        {/* Workflow Visualization */}
+        {analysisProgress && (
+          <div className="border-b border-gray-200">
+            <WorkflowVisualization 
+              analysisProgress={analysisProgress}
+              selectedAgents={selectedAgents}
+              className="m-4"
+            />
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="border-b border-gray-200 bg-white">
@@ -314,11 +415,11 @@ const AgentResultsTabs = ({
 
             {/* Tab List */}
             <div className="flex overflow-x-auto flex-1">
-              {selectedAgents.map((agent, index) => {
-                const status = agentStatuses[agent.name]?.status || 'pending'
+              {selectedAgents.map((agentName, index) => {
+                const status = agentStatuses[agentName]?.status || 'pending'
                 return (
                   <button
-                    key={agent.name}
+                    key={agentName}
                     onClick={() => setActiveTab(index)}
                     className={clsx(
                       'flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap border-b-2 transition-colors',
@@ -328,8 +429,8 @@ const AgentResultsTabs = ({
                     )}
                   >
                     {getStatusIcon(status)}
-                    {getAgentIcon(agent.name)}
-                    <span>{agent.display_name || agent.name}</span>
+                    {getAgentIcon(agentName)}
+                    <span>{agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
                     <span className="text-xs text-gray-400">({index + 1}/{selectedAgents.length})</span>
                   </button>
                 )
@@ -364,8 +465,8 @@ const AgentResultsTabs = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between">
+        <div className="p-4 border-t border-gray-200 bg-gray-50">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-gray-600">
               {isAnalyzing ? (
                 <span className="flex items-center gap-2">
@@ -379,12 +480,64 @@ const AgentResultsTabs = ({
                 </span>
               )}
             </div>
-            <button
-              onClick={onClose}
-              className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition-colors"
-            >
-              {isAnalyzing ? 'Close (Analysis Running)' : 'Close'}
-            </button>
+            
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {/* Show results button if analysis is complete */}
+              {!isAnalyzing && analysisProgress?.finalReport && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    // Navigate to results page with the final report
+                    if (navigate) {
+                      navigate('/analysis-results', {
+                        state: {
+                          analysisResult: analysisProgress.finalReport,
+                          userQuestion: analysisProgress.userQuestion || 'Analysis Question'
+                        }
+                      })
+                    } else {
+                      // Fallback: store data in sessionStorage and navigate
+                      sessionStorage.setItem('analysisResult', JSON.stringify(analysisProgress.finalReport))
+                      sessionStorage.setItem('userQuestion', analysisProgress.userQuestion || 'Analysis Question')
+                      window.location.href = '/analysis-results'
+                    }
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 relative overflow-hidden text-sm"
+                >
+                  {/* Animated background gradient */}
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500"
+                    animate={{
+                      backgroundPosition: ['0% 50%', '100% 50%', '0% 50%']
+                    }}
+                    transition={{
+                      duration: 3,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    }}
+                    style={{
+                      backgroundSize: '200% 200%'
+                    }}
+                  />
+                  
+                  {/* Content */}
+                  <div className="relative z-10 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="hidden sm:inline">View Full Results</span>
+                    <span className="sm:hidden">View Results</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </motion.button>
+              )}
+              
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition-colors text-sm"
+              >
+                {isAnalyzing ? 'Close' : 'Close'}
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>

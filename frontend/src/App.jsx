@@ -15,7 +15,11 @@ function App() {
           className="min-h-screen"
         >
           <Routes>
-            <Route path="/" element={<DataUpload />} />
+            <Route path="/" element={
+              <ErrorBoundary>
+                <DataUpload />
+              </ErrorBoundary>
+            } />
             <Route path="/analysis-results" element={
               <ErrorBoundary>
                 <AnalysisResults />

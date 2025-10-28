@@ -16,6 +16,7 @@ from datetime import datetime
 
 from services.claude_service import ClaudeService
 from utils.data_processor import DataProcessor, clean_nan_values
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,6 @@ class AgentService:
                 # Core Data Operations
                 "data_quality_audit",
                 "exploratory_data_analysis", 
-                "business_intelligence_dashboard",
                 "data_cleaning",  # Keep existing for backward compatibility
                 "data_visualization",  # Keep existing for backward compatibility
                 
@@ -130,7 +130,8 @@ class AgentService:
             return {}
     
     async def analyze_request(self, file_content: bytes, filename: str, 
-                            user_question: str, selected_agents: Optional[List[str]] = None) -> Dict[str, Any]:
+                            user_question: str, selected_agents: Optional[List[str]] = None,
+                            progress_callback: Optional[callable] = None) -> Dict[str, Any]:
         """
         Process an analysis request through the complete agent workflow
         
@@ -161,7 +162,7 @@ class AgentService:
             # Step 3: Execute selected agents
             logger.info(f"Step 3: Executing {len(selected_agents)} agents...")
             agent_results = await self._execute_agents(
-                selected_agents, data_sample, user_question, file_content
+                selected_agents, data_sample, user_question, file_content, progress_callback
             )
             
             # Step 4: Generate comprehensive report
@@ -288,19 +289,44 @@ class AgentService:
             return ["data_cleaning", "data_visualization", "statistical_analysis"]
     
     async def _execute_agents(self, agent_names: List[str], data_sample: Dict[str, Any], 
-                            user_question: str, file_content: bytes) -> List[Dict[str, Any]]:
-        """Execute the selected agents"""
+                            user_question: str, file_content: bytes, progress_callback: Optional[callable] = None) -> List[Dict[str, Any]]:
+        """Execute the selected agents with progress updates"""
         results = []
         
-        for agent_name in agent_names:
+        for i, agent_name in enumerate(agent_names):
             try:
                 logger.info(f"Executing agent: {agent_name}")
+                
+                # Emit progress update - agent starting
+                if progress_callback:
+                    await progress_callback({
+                        "type": "agent_started",
+                        "agent_name": agent_name,
+                        "agent_index": i,
+                        "total_agents": len(agent_names),
+                        "progress": (i / len(agent_names)) * 100
+                    })
                 
                 # Get agent instance
                 agent = self.agents.get(agent_name)
                 
                 if not agent:
                     logger.warning(f"No agent found for: {agent_name}")
+                    if progress_callback:
+                        await progress_callback({
+                            "type": "agent_error",
+                            "agent_name": agent_name,
+                            "error": f"Agent {agent_name} not found"
+                        })
+                    continue
+                
+                # Check if mock mode is enabled (exclude agent selector)
+                if settings.AGENT_MOCK and agent_name != "agent_selector":
+                    logger.info(f"Using mock execution for agent: {agent_name}")
+                    result = await self._mock_agent_execution(
+                        agent_name, agent, data_sample, user_question, progress_callback
+                    )
+                    results.append(result)
                     continue
                 
                 # Generate code for this agent using its specific prompt
@@ -308,12 +334,31 @@ class AgentService:
                     agent, data_sample, user_question
                 )
                 
+                # Emit progress update - code generated
+                if progress_callback:
+                    await progress_callback({
+                        "type": "code_generated",
+                        "agent_name": agent_name,
+                        "progress": ((i + 0.5) / len(agent_names)) * 100
+                    })
+                
                 # Execute the generated code
                 execution_result = await self._execute_agent_code(
                     agent_name, code_result, file_content, data_sample
                 )
                 
-                results.append({
+                # Check if execution was successful
+                if not execution_result.get("success", False):
+                    logger.warning(f"Agent {agent_name} execution failed, but continuing with partial results")
+                    # Create a result with execution failure but still include generated code
+                    execution_result["success"] = False
+                    execution_result["error"] = execution_result.get("error", "Code execution failed")
+                    
+                    # Provide fallback insights from the generated code
+                    if not execution_result.get("insights"):
+                        execution_result["insights"] = self._generate_fallback_insights(agent_name, code_result)
+                
+                result = {
                     "agent_name": agent_name,
                     "agent_info": {
                         "display_name": agent.display_name,
@@ -323,15 +368,39 @@ class AgentService:
                     "code_result": code_result,
                     "execution_result": execution_result,
                     "timestamp": datetime.utcnow().isoformat()
-                })
+                }
+                
+                results.append(result)
+                
+                # Emit progress update - agent completed (even if with errors)
+                if progress_callback:
+                    await progress_callback({
+                        "type": "agent_completed",
+                        "agent_name": agent_name,
+                        "agent_index": i,
+                        "total_agents": len(agent_names),
+                        "progress": ((i + 1) / len(agent_names)) * 100,
+                        "result": result,
+                        "success": execution_result.get("success", False)
+                    })
                 
             except Exception as e:
                 logger.error(f"Error executing agent {agent_name}: {str(e)}")
-                results.append({
+                error_result = {
                     "agent_name": agent_name,
                     "error": str(e),
                     "timestamp": datetime.utcnow().isoformat()
-                })
+                }
+                results.append(error_result)
+                
+                # Emit progress update - agent error
+                if progress_callback:
+                    await progress_callback({
+                        "type": "agent_error",
+                        "agent_name": agent_name,
+                        "error": str(e),
+                        "progress": ((i + 1) / len(agent_names)) * 100
+                    })
         
         return results
     
@@ -465,6 +534,7 @@ warnings.filterwarnings('ignore')
 import sys
 import os
 from pathlib import Path
+import traceback
 
 # Set output directory
 output_dir = Path(r"{output_dir}")
@@ -474,10 +544,19 @@ os.chdir(output_dir)
 plt.style.use('default')
 sns.set_palette("husl")
 
+# Configure matplotlib for better compatibility
+plt.rcParams['figure.figsize'] = (10, 6)
+plt.rcParams['figure.dpi'] = 100
+plt.rcParams['savefig.dpi'] = 100
+plt.rcParams['savefig.bbox'] = 'tight'
+
 try:
     # Load the data
     data_file = r"{data_file_path}"
     file_extension = Path(data_file).suffix.lower()
+    
+    print(f"Loading data from: {{data_file}}")
+    print(f"File extension: {{file_extension}}")
     
     if file_extension == '.csv':
         df = pd.read_csv(data_file)
@@ -487,6 +566,8 @@ try:
         raise ValueError(f"Unsupported file format: {{file_extension}}")
     
     print(f"Data loaded successfully. Shape: {{df.shape}}")
+    print(f"Columns: {{list(df.columns)}}")
+    print(f"Data types: {{df.dtypes.to_dict()}}")
     
     # Execute user code
 {indented_user_code}
@@ -495,7 +576,7 @@ try:
     
 except Exception as e:
     print(f"Error during analysis: {{str(e)}}")
-    import traceback
+    print("\\nFull traceback:")
     traceback.print_exc()
     sys.exit(1)
 '''
@@ -515,19 +596,73 @@ except Exception as e:
         
         return '\n'.join(indented_lines)
     
+    def _generate_fallback_insights(self, agent_name: str, code_result: Dict[str, Any]) -> str:
+        """Generate fallback insights when code execution fails"""
+        try:
+            # Extract insights from the generated code if available
+            if code_result.get("insights"):
+                return code_result["insights"]
+            
+            # Generate basic insights based on agent type
+            agent_insights = {
+                "data_quality_audit": "Data quality analysis was attempted but execution failed. The generated code includes data profiling, missing value analysis, and data type validation.",
+                "exploratory_data_analysis": "Exploratory data analysis was attempted but execution failed. The generated code includes statistical summaries, distribution analysis, and correlation studies.",
+                "data_visualization": "Data visualization was attempted but execution failed. The generated code includes various chart types and visual analysis techniques.",
+                "statistical_analysis": "Statistical analysis was attempted but execution failed. The generated code includes hypothesis testing, regression analysis, and statistical modeling.",
+                "churn_prediction": "Customer churn prediction was attempted but execution failed. The generated code includes machine learning models for churn prediction.",
+                "customer_segmentation": "Customer segmentation was attempted but execution failed. The generated code includes clustering algorithms and customer profiling.",
+                "sales_performance_analysis": "Sales performance analysis was attempted but execution failed. The generated code includes sales metrics, trend analysis, and performance evaluation.",
+                "revenue_forecasting": "Revenue forecasting was attempted but execution failed. The generated code includes time series analysis and predictive modeling.",
+                "market_basket_analysis": "Market basket analysis was attempted but execution failed. The generated code includes association rule mining and product recommendation algorithms.",
+                "predictive_modeling": "Predictive modeling was attempted but execution failed. The generated code includes machine learning algorithms and model evaluation techniques.",
+                "anomaly_detection": "Anomaly detection was attempted but execution failed. The generated code includes outlier detection algorithms and anomaly scoring.",
+                "cohort_analysis": "Cohort analysis was attempted but execution failed. The generated code includes customer lifecycle analysis and retention modeling.",
+                "ab_testing_analysis": "A/B testing analysis was attempted but execution failed. The generated code includes statistical significance testing and experiment evaluation.",
+                "marketing_roi_analysis": "Marketing ROI analysis was attempted but execution failed. The generated code includes campaign performance evaluation and ROI calculations.",
+                "profitability_analysis": "Profitability analysis was attempted but execution failed. The generated code includes profit margin analysis and cost optimization.",
+                "cash_flow_analysis": "Cash flow analysis was attempted but execution failed. The generated code includes cash flow forecasting and liquidity analysis.",
+                "employee_performance_analysis": "Employee performance analysis was attempted but execution failed. The generated code includes performance metrics and productivity analysis.",
+                "operational_bottleneck_detection": "Operational bottleneck detection was attempted but execution failed. The generated code includes process analysis and efficiency optimization.",
+                "seasonal_business_planning": "Seasonal business planning was attempted but execution failed. The generated code includes seasonal trend analysis and planning algorithms.",
+                "competitive_analysis": "Competitive analysis was attempted but execution failed. The generated code includes market positioning and competitive benchmarking.",
+                "customer_acquisition_cost_analysis": "Customer acquisition cost analysis was attempted but execution failed. The generated code includes CAC calculations and marketing efficiency analysis."
+            }
+            
+            return agent_insights.get(agent_name, f"Analysis for {agent_name} was attempted but execution failed. The generated code includes relevant analysis techniques for this domain.")
+            
+        except Exception as e:
+            logger.error(f"Error generating fallback insights for {agent_name}: {str(e)}")
+            return f"Analysis for {agent_name} was attempted but execution failed. Please check the generated code for the intended analysis approach."
+    
     async def _run_python_script(self, script_path: Path, working_dir: Path) -> Dict[str, Any]:
         """Run Python script and capture output"""
         try:
             start_time = datetime.utcnow()
             
-            # Run the script
-            process = await asyncio.create_subprocess_exec(
-                'python', str(script_path),
-                cwd=working_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env=os.environ.copy()
-            )
+            # Try different Python commands
+            python_commands = ['python', 'python3', 'py']
+            process = None
+            
+            for cmd in python_commands:
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        cmd, str(script_path),
+                        cwd=working_dir,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                        env=os.environ.copy()
+                    )
+                    break
+                except FileNotFoundError:
+                    continue
+            
+            if process is None:
+                return {
+                    "success": False,
+                    "output": "",
+                    "error": "No Python interpreter found. Tried: python, python3, py",
+                    "execution_time": 0
+                }
             
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=300)  # 5 minute timeout
             
@@ -535,6 +670,9 @@ except Exception as e:
             execution_time = (end_time - start_time).total_seconds()
             
             output = stdout.decode('utf-8', errors='replace')
+            
+            # Log the output for debugging
+            logger.info(f"Script output: {output[:500]}...")  # Log first 500 chars
             
             return {
                 "success": process.returncode == 0,
@@ -703,3 +841,70 @@ Focus on answering the user's original question and providing actionable insight
         ]
         
         return recommendations
+    
+    async def _mock_agent_execution(self, agent_name: str, agent: Any, data_sample: Dict[str, Any], 
+                                  user_question: str, progress_callback: Optional[callable] = None) -> Dict[str, Any]:
+        """
+        Mock agent execution that returns sample text with 3-second delay
+        
+        Args:
+            agent_name: Name of the agent
+            agent: Agent instance
+            data_sample: Sample data information
+            user_question: User's analysis question
+            progress_callback: Optional progress callback
+            
+        Returns:
+            Mock execution results
+        """
+        try:
+            logger.info(f"Mock execution for agent: {agent_name}")
+            
+            # Wait 3 seconds to simulate processing
+            await asyncio.sleep(3)
+            
+            # Create mock result
+            mock_result = {
+                "agent_name": agent_name,
+                "agent_info": {
+                    "display_name": agent.display_name,
+                    "description": agent.description,
+                    "specialties": agent.specialties
+                },
+                "code_result": {
+                    "code": f"# Mock code for {agent_name}\nprint('This is mock analysis for {agent_name}')\n# Sample text analysis",
+                    "description": f"Mock analysis for {agent_name}",
+                    "outputs": ["sample_text"],
+                    "insights": f"This is sample text analysis for {agent_name}. The mock analysis shows typical patterns and insights that would be generated by this agent."
+                },
+                "execution_result": {
+                    "success": True,
+                    "output": f"Mock execution completed for {agent_name}\nSample text: This is sample text analysis for {agent_name}",
+                    "error": None,
+                    "execution_time": 3.0,
+                    "output_files": [],
+                    "insights": f"This is sample text analysis for {agent_name}. The mock analysis shows typical patterns and insights that would be generated by this agent."
+                },
+                "timestamp": datetime.utcnow().isoformat(),
+                "success": True
+            }
+            
+            # Send progress update if callback provided
+            if progress_callback:
+                await progress_callback({
+                    "type": "agent_completed",
+                    "agent_name": agent_name,
+                    "progress": 100,
+                    "result": mock_result,
+                    "success": True
+                })
+            
+            return mock_result
+            
+        except Exception as e:
+            logger.error(f"Error in mock execution for {agent_name}: {str(e)}")
+            return {
+                "agent_name": agent_name,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }

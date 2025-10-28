@@ -46,18 +46,44 @@ export default function DataUpload() {
   // WebSocket connection for real-time progress
   const getWebSocketUrl = () => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
-    return baseUrl.replace('http', 'ws') + '/ws/progress'
+    const wsUrl = baseUrl.replace('http', 'ws') + '/ws/progress'
+    console.log('WebSocket URL:', wsUrl)
+    return wsUrl
   }
   
   const { isConnected, lastMessage } = useWebSocket(getWebSocketUrl())
-
-  // Handle WebSocket progress updates
+  
+  // Debug WebSocket connection
   useEffect(() => {
+    console.log('WebSocket connection status:', { isConnected, lastMessage })
+  }, [isConnected, lastMessage])
+
+  // Handle WebSocket progress updates (LangGraph enhanced)
+  useEffect(() => {
+    console.log('WebSocket effect triggered:', { lastMessage, showAgentTabs, isConnected })
+    
     if (lastMessage && showAgentTabs) {
-      setAnalysisProgress(prev => {
-        const newProgress = { ...prev }
+      console.log('Processing WebSocket message:', lastMessage)
+      try {
+        setAnalysisProgress(prev => {
+          const newProgress = { ...prev }
         
         switch (lastMessage.type) {
+          case 'workflow_started':
+            newProgress.workflowId = lastMessage.workflow_id
+            newProgress.filename = lastMessage.filename
+            newProgress.userQuestion = lastMessage.user_question
+            newProgress.progress = 0
+            newProgress.completedSteps = []
+            break
+            
+          case 'workflow_progress':
+            newProgress.progress = lastMessage.progress
+            newProgress.completedSteps = lastMessage.completed_steps || []
+            newProgress.currentAgent = lastMessage.current_agent
+            newProgress.message = lastMessage.message
+            break
+            
           case 'agent_started':
             newProgress.currentAgent = lastMessage.agent_name
             newProgress.progress = lastMessage.progress
@@ -87,10 +113,35 @@ export default function DataUpload() {
             newProgress.currentAgent = null
             newProgress.progress = lastMessage.progress
             break
+            
+          case 'workflow_error':
+            newProgress.errors = [...(newProgress.errors || []), {
+              step: lastMessage.step,
+              error: lastMessage.error
+            }]
+            newProgress.progress = lastMessage.progress
+            break
+            
+          case 'workflow_completed':
+            newProgress.progress = 100
+            newProgress.currentAgent = null
+            newProgress.success = lastMessage.success
+            newProgress.finalReport = lastMessage.final_report
+            
+            // Set analyzing to false so the "View Full Results" button appears
+            setIsAnalyzing(false)
+            
+            console.log('Workflow completed via WebSocket, final report available')
+            console.log('Final report:', lastMessage.final_report)
+            break
         }
         
         return newProgress
       })
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error)
+        // Don't crash the app, just log the error
+      }
     }
   }, [lastMessage, showAgentTabs])
 
@@ -239,6 +290,7 @@ export default function DataUpload() {
 
     // Step 1: Plan analysis to show agents modal
     setIsPlanning(true)
+    setIsAnalyzing(true) // Show spinner immediately when user clicks "Ask Banta"
     try {
       const planResponse = await apiEndpoints.planAnalysis(
         fileToAnalyze,
@@ -253,14 +305,17 @@ export default function DataUpload() {
       if (agentNames.length === 0) {
         toast.error('No agents were selected during planning')
         setIsPlanning(false)
+        setIsAnalyzing(false)
         return
       }
       setPlannedAgents(agentInfos)
       setSelectedAgentNames(agentNames)
       setShowPlanModal(true)
+      setIsAnalyzing(false) // Stop spinner when modal is shown so user can interact
     } catch (error) {
       const errorMessage = error?.response?.data?.detail || error.message || 'Failed to plan analysis'
       toast.error(errorMessage)
+      setIsAnalyzing(false)
     } finally {
       setIsPlanning(false)
     }
@@ -276,6 +331,9 @@ export default function DataUpload() {
   }
 
   const confirmRunWithSelection = async () => {
+    console.log('Starting analysis with selected agents:', selectedAgentNames)
+    console.log('Current state:', { showPlanModal, showAgentTabs, isAnalyzing })
+    
     if (selectedAgentNames.length === 0) {
       toast.error('Please keep at least one agent selected')
       return
@@ -285,21 +343,27 @@ export default function DataUpload() {
       toast.error('No successfully uploaded files found')
       return
     }
-
-    // Close plan modal and show agent tabs
-    setShowPlanModal(false)
-    setShowAgentTabs(true)
-    setIsAnalyzing(true)
-
-    // Initialize progress tracking
-    setAnalysisProgress({
-      currentAgent: null,
-      progress: 0,
-      completedAgents: [],
-      startTime: new Date().toISOString()
-    })
+    
+    console.log('About to set showAgentTabs to true')
 
     try {
+      // Close plan modal and show agent tabs
+      setShowPlanModal(false)
+      setShowAgentTabs(true)
+      setIsAnalyzing(true)
+
+      // Initialize progress tracking
+      setAnalysisProgress({
+        currentAgent: null,
+        progress: 0,
+        completedAgents: [],
+        startTime: new Date().toISOString()
+      })
+
+      console.log('Calling analyzeData API...')
+      console.log('Selected agents:', selectedAgentNames)
+      console.log('WebSocket connected:', isConnected)
+      
       // Call the actual API - progress will come via WebSocket
       const response = await apiEndpoints.analyzeData(
         fileToAnalyze,
@@ -310,17 +374,29 @@ export default function DataUpload() {
         selectedAgentNames
       )
 
-      // Wait a bit for final WebSocket updates, then navigate
+      console.log('Analysis API response:', response)
+      
+      // Always keep the tabs open to show progress, regardless of initial response
+      // The WebSocket will handle the real-time updates
+      console.log('Analysis API called successfully, keeping tabs open for WebSocket updates')
+      
+      // Don't set isAnalyzing to false here - let WebSocket handle the completion
+      
+      // Add a fallback timeout in case WebSocket doesn't work
       setTimeout(() => {
-        navigate('/analysis-results', {
-          state: {
-            analysisResult: response.data,
-            userQuestion: query.trim()
-          }
-        })
-      }, 2000)
+        if (isAnalyzing && analysisProgress && analysisProgress.progress === 0) {
+          console.log('WebSocket fallback: No progress received, simulating progress')
+          setAnalysisProgress(prev => ({
+            ...prev,
+            progress: 25,
+            message: 'Analysis in progress...',
+            currentAgent: selectedAgentNames[0] || 'data_quality_audit'
+          }))
+        }
+      }, 5000) // Wait 5 seconds before fallback
 
     } catch (error) {
+      console.error('Analysis error:', error)
       const errorMessage = error.response?.data?.detail || 'Analysis failed'
       toast.error(errorMessage)
       
@@ -621,24 +697,119 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
                     
                     <div className="flex justify-center">
                       <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
+                        whileHover={{ scale: isAnalyzing ? 1 : 1.05 }}
+                        whileTap={{ scale: isAnalyzing ? 1 : 0.95 }}
                         type="submit"
                         disabled={isAnalyzing || !query.trim()}
-                        className="px-12 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-lg font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+                        className={`px-12 py-4 text-white text-lg font-bold rounded-xl transition-all duration-200 shadow-lg hover:shadow-2xl disabled:cursor-not-allowed flex items-center gap-3 relative overflow-hidden ${
+                          isAnalyzing 
+                            ? 'bg-gradient-to-r from-indigo-500 to-purple-500' 
+                            : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
+                        }`}
                       >
-                        {isAnalyzing ? (
-                          <>
-                            <Loader className="w-5 h-5 animate-spin" />
-                            Banta is analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <Brain className="w-5 h-5" />
-                            Ask Banta
-                            <Send className="w-5 h-5" />
-                          </>
+                        {/* Animated background gradient */}
+                        {isAnalyzing && (
+                          <motion.div
+                            className="absolute inset-0 bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500"
+                            animate={{
+                              backgroundPosition: ['0% 50%', '100% 50%', '0% 50%']
+                            }}
+                            transition={{
+                              duration: 2,
+                              repeat: Infinity,
+                              ease: "easeInOut"
+                            }}
+                            style={{
+                              backgroundSize: '200% 200%'
+                            }}
+                          />
                         )}
+                        
+                        {/* Pulsing ring animation */}
+                        {isAnalyzing && (
+                          <motion.div
+                            className="absolute inset-0 rounded-xl border-2 border-white/30"
+                            animate={{
+                              scale: [1, 1.1, 1],
+                              opacity: [0.3, 0.6, 0.3]
+                            }}
+                            transition={{
+                              duration: 1.5,
+                              repeat: Infinity,
+                              ease: "easeInOut"
+                            }}
+                          />
+                        )}
+                        
+                        {/* Content */}
+                        <div className="relative z-10 flex items-center gap-3">
+                          {isAnalyzing ? (
+                            <>
+                              {/* Sexy multi-layer spinner */}
+                              <div className="relative">
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                  className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full"
+                                />
+                                <motion.div
+                                  animate={{ rotate: -360 }}
+                                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                                  className="absolute inset-0 w-6 h-6 border-2 border-transparent border-r-white/50 rounded-full"
+                                />
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                                  className="absolute inset-1 w-4 h-4 border border-white/20 border-b-white rounded-full"
+                                />
+                              </div>
+                              
+                              {/* Animated text */}
+                              <motion.span
+                                animate={{ opacity: [0.7, 1, 0.7] }}
+                                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                              >
+                                Banta is analyzing...
+                              </motion.span>
+                              
+                              {/* Floating dots */}
+                              <div className="flex gap-1">
+                                {[0, 1, 2].map((i) => (
+                                  <motion.div
+                                    key={i}
+                                    className="w-1 h-1 bg-white rounded-full"
+                                    animate={{
+                                      scale: [0.5, 1, 0.5],
+                                      opacity: [0.3, 1, 0.3]
+                                    }}
+                                    transition={{
+                                      duration: 1,
+                                      repeat: Infinity,
+                                      delay: i * 0.2,
+                                      ease: "easeInOut"
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <motion.div
+                                whileHover={{ rotate: 360 }}
+                                transition={{ duration: 0.5 }}
+                              >
+                                <Brain className="w-5 h-5" />
+                              </motion.div>
+                              Ask Banta
+                              <motion.div
+                                whileHover={{ x: 5 }}
+                                transition={{ duration: 0.2 }}
+                              >
+                                <Send className="w-5 h-5" />
+                              </motion.div>
+                            </>
+                          )}
+                        </div>
                       </motion.button>
                     </div>
                   </form>
@@ -767,12 +938,15 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
       {/* Agent Results Tabs */}
       <AnimatePresence>
         {showAgentTabs && (
-          <AgentResultsTabs
-            selectedAgents={plannedAgents.filter(agent => selectedAgentNames.includes(agent.name))}
-            analysisProgress={analysisProgress}
-            onClose={closeAgentTabs}
-            isAnalyzing={isAnalyzing}
-          />
+          <div className="fixed inset-0 z-50">
+            <AgentResultsTabs
+              selectedAgents={selectedAgentNames}
+              analysisProgress={analysisProgress}
+              onClose={closeAgentTabs}
+              isAnalyzing={isAnalyzing}
+              navigate={navigate}
+            />
+          </div>
         )}
       </AnimatePresence>
 
@@ -918,14 +1092,67 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
                   Cancel
                 </button>
                 <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
+                  whileHover={{ scale: isAnalyzing ? 1 : 1.03 }}
+                  whileTap={{ scale: isAnalyzing ? 1 : 0.97 }}
                   onClick={confirmRunWithSelection}
                   disabled={isAnalyzing || isPlanning || selectedAgentNames.length === 0}
-                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className={`px-6 py-3 text-white rounded-xl font-semibold disabled:cursor-not-allowed flex items-center gap-2 relative overflow-hidden transition-all duration-200 ${
+                    isAnalyzing 
+                      ? 'bg-gradient-to-r from-indigo-500 to-purple-500' 
+                      : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
+                  }`}
                 >
-                  {isAnalyzing ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} 
-                  {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
+                  {/* Animated background gradient */}
+                  {isAnalyzing && (
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500"
+                      animate={{
+                        backgroundPosition: ['0% 50%', '100% 50%', '0% 50%']
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                      style={{
+                        backgroundSize: '200% 200%'
+                      }}
+                    />
+                  )}
+                  
+                  {/* Content */}
+                  <div className="relative z-10 flex items-center gap-2">
+                    {isAnalyzing ? (
+                      <>
+                        {/* Sexy spinner */}
+                        <div className="relative">
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                            className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                          />
+                          <motion.div
+                            animate={{ rotate: -360 }}
+                            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                            className="absolute inset-0 w-4 h-4 border-2 border-transparent border-r-white/50 rounded-full"
+                          />
+                        </div>
+                        
+                        {/* Animated text */}
+                        <motion.span
+                          animate={{ opacity: [0.7, 1, 0.7] }}
+                          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                        >
+                          Analyzing...
+                        </motion.span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Run Analysis
+                      </>
+                    )}
+                  </div>
                 </motion.button>
               </div>
             </motion.div>

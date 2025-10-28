@@ -24,12 +24,39 @@ export default function AnalysisResults() {
   const navigate = useNavigate()
   const location = useLocation()
   
-  // Get analysis results from navigation state
+  // Get analysis results from navigation state or sessionStorage (fallback)
   const { analysisResult, userQuestion } = location.state || {}
   
+  // Fallback: try to get data from sessionStorage if not in location.state
+  const fallbackAnalysisResult = analysisResult || (() => {
+    try {
+      const stored = sessionStorage.getItem('analysisResult')
+      return stored ? JSON.parse(stored) : null
+    } catch (e) {
+      return null
+    }
+  })()
+  
+  const fallbackUserQuestion = userQuestion || (() => {
+    try {
+      return sessionStorage.getItem('userQuestion') || 'Analysis Question'
+    } catch (e) {
+      return 'Analysis Question'
+    }
+  })()
+  
+  // Use fallback values if primary values are not available
+  const finalAnalysisResult = analysisResult || fallbackAnalysisResult
+  const finalUserQuestion = userQuestion || fallbackUserQuestion
+  
+  // Debug logging
+  console.log('AnalysisResults - analysisResult:', finalAnalysisResult)
+  console.log('AnalysisResults - userQuestion:', finalUserQuestion)
+  console.log('AnalysisResults - location.state:', location.state)
+  
   // Add safety checks and fallbacks
-  const safeAnalysisResult = analysisResult || {}
-  const safeUserQuestion = userQuestion || 'Analysis Question'
+  const safeAnalysisResult = finalAnalysisResult || {}
+  const safeUserQuestion = finalUserQuestion || 'Analysis Question'
   
   // Agent icons mapping
   const agentIcons = {
@@ -74,7 +101,7 @@ export default function AnalysisResults() {
   }
 
   // If no analysis results, redirect back
-  if (!analysisResult || !userQuestion) {
+  if (!finalAnalysisResult || !finalUserQuestion) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
@@ -99,6 +126,16 @@ export default function AnalysisResults() {
       </div>
     )
   }
+
+  // Check if analysis results are empty or invalid
+  const hasValidResults = finalAnalysisResult.agent_results && Object.keys(finalAnalysisResult.agent_results).length > 0
+  const hasVisualizations = hasValidResults && Object.values(finalAnalysisResult.agent_results || {}).some(result => 
+    result.execution_result?.output_files?.length > 0
+  )
+
+  console.log('AnalysisResults - hasValidResults:', hasValidResults)
+  console.log('AnalysisResults - hasVisualizations:', hasVisualizations)
+  console.log('AnalysisResults - agent_results:', finalAnalysisResult.agent_results)
 
   const formatTimestamp = (timestamp) => {
     return new Date(timestamp).toLocaleString()
@@ -183,14 +220,14 @@ export default function AnalysisResults() {
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Your Question:</h3>
-                  <p className="text-gray-700 text-lg italic">"{userQuestion}"</p>
+                  <p className="text-gray-700 text-lg italic">"{finalUserQuestion}"</p>
                 </div>
               </div>
             </div>
           </motion.div>
 
           {/* Analysis Summary */}
-          {analysisResult.success && (
+          {finalAnalysisResult.success && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -203,15 +240,15 @@ export default function AnalysisResults() {
                   <div className="flex items-center gap-6 text-sm text-gray-600">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
-                      Completed: {formatTimestamp(analysisResult.timestamp)}
+                      Completed: {formatTimestamp(finalAnalysisResult.timestamp)}
                     </div>
                     <div className="flex items-center gap-2">
                       <Brain className="w-4 h-4" />
-                      Agents: {analysisResult.selected_agents?.length || 0}
+                      Agents: {finalAnalysisResult.selected_agents?.length || 0}
                     </div>
                     <div className="flex items-center gap-2">
                       <FileText className="w-4 h-4" />
-                      Data: {analysisResult.data_sample?.total_rows?.toLocaleString()} rows
+                      Data: {finalAnalysisResult.data_sample?.total_rows?.toLocaleString()} rows
                     </div>
                   </div>
                 </div>
@@ -220,19 +257,19 @@ export default function AnalysisResults() {
                   <div className="grid md:grid-cols-3 gap-6">
                     <div className="text-center">
                       <div className="text-3xl font-bold text-indigo-600 mb-2">
-                        {analysisResult.selected_agents?.length || 0}
+                        {finalAnalysisResult.selected_agents?.length || 0}
                       </div>
                       <p className="text-gray-600">AI Agents Used</p>
                     </div>
                     <div className="text-center">
                       <div className="text-3xl font-bold text-purple-600 mb-2">
-                        {analysisResult.data_sample?.columns?.length || 0}
+                        {finalAnalysisResult.data_sample?.columns?.length || 0}
                       </div>
                       <p className="text-gray-600">Data Columns</p>
                     </div>
                     <div className="text-center">
                       <div className="text-3xl font-bold text-pink-600 mb-2">
-                        {analysisResult.agent_results?.filter(r => r.execution_result?.success).length || 0}
+                        {Object.values(finalAnalysisResult.agent_results || {}).filter(r => r.execution_result?.success).length || 0}
                       </div>
                       <p className="text-gray-600">Successful Analyses</p>
                     </div>
@@ -243,7 +280,7 @@ export default function AnalysisResults() {
           )}
 
           {/* Selected Agents */}
-          {analysisResult.selected_agents && (
+          {finalAnalysisResult.selected_agents && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -258,9 +295,9 @@ export default function AnalysisResults() {
                 
                 <div className="p-6">
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {analysisResult.selected_agents.map((agentName, index) => {
+                    {finalAnalysisResult.selected_agents.map((agentName, index) => {
                       const IconComponent = agentIcons[agentName] || Brain
-                      const agentResult = analysisResult.agent_results?.find(r => r.agent_name === agentName)
+                      const agentResult = Object.values(finalAnalysisResult.agent_results || {}).find(r => r.agent_name === agentName)
                       const isSuccess = agentResult?.execution_result?.success
                       
                       return (
@@ -303,11 +340,47 @@ export default function AnalysisResults() {
             </motion.div>
           )}
 
+          {/* Empty Results Message */}
+          {!hasValidResults && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="max-w-4xl mx-auto mb-8"
+            >
+              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
+                <div className="p-8 text-center">
+                  <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Analysis Completed</h3>
+                  <p className="text-gray-600 mb-6">
+                    The analysis has finished, but no results were generated. This might be due to:
+                  </p>
+                  <ul className="text-left text-gray-600 space-y-2 max-w-md mx-auto mb-6">
+                    <li>• Data format issues</li>
+                    <li>• Agent execution errors</li>
+                    <li>• Insufficient data for analysis</li>
+                    <li>• Backend processing issues</li>
+                  </ul>
+                  <div className="flex gap-4 justify-center">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => navigate('/')}
+                      className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all duration-200"
+                    >
+                      Try Again
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* Visualizations Gallery */}
-          {analysisResult.agent_results && (
+          {finalAnalysisResult.agent_results && (
             (() => {
               // Collect all visualizations from all agents
-              const allVisualizations = analysisResult.agent_results
+              const allVisualizations = Object.values(finalAnalysisResult.agent_results || {})
                 .filter(result => result.execution_result?.success && result.execution_result?.output_files)
                 .flatMap(result => 
                   result.execution_result.output_files
@@ -413,7 +486,7 @@ export default function AnalysisResults() {
           )}
 
           {/* Analysis Results */}
-          {analysisResult.agent_results && (
+          {finalAnalysisResult.agent_results && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -427,7 +500,7 @@ export default function AnalysisResults() {
                 </div>
                 
                 <div className="p-6 space-y-6">
-                  {analysisResult.agent_results.map((result, index) => {
+                  {Object.values(finalAnalysisResult.agent_results || {}).map((result, index) => {
                     const IconComponent = agentIcons[result.agent_name] || Brain
                     const isSuccess = result.execution_result?.success
                     
@@ -616,7 +689,7 @@ export default function AnalysisResults() {
           )}
 
           {/* Final Report */}
-          {analysisResult.report && (
+          {finalAnalysisResult.report && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -654,18 +727,22 @@ export default function AnalysisResults() {
                         em: ({children}) => <em className="italic text-gray-700">{children}</em>
                       }}
                     >
-                      {analysisResult.report.content}
+                      {finalAnalysisResult.report.content}
                     </ReactMarkdown>
                   </div>
                   
-                  {analysisResult.report.summary && (
+                  {finalAnalysisResult.report.summary && (
                     <div className="mt-6 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
                       <h4 className="font-semibold text-emerald-900 mb-2">Key Summary:</h4>
-                      <ul className="list-disc list-inside text-emerald-800 space-y-1">
-                        {analysisResult.report.summary.map((item, index) => (
-                          <li key={index}>{item}</li>
-                        ))}
-                      </ul>
+                      {Array.isArray(finalAnalysisResult.report.summary) ? (
+                        <ul className="list-disc list-inside text-emerald-800 space-y-1">
+                          {finalAnalysisResult.report.summary.map((item, index) => (
+                            <li key={index}>{item}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-emerald-800">{finalAnalysisResult.report.summary}</p>
+                      )}
                     </div>
                   )}
                 </div>

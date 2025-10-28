@@ -98,29 +98,6 @@ agents:
     dependencies: ["exploratory_data_analysis"]
     stage: "exploration"
 
-  business_intelligence_dashboard:
-    name: "Business Intelligence Dashboard"
-    description: "Creates executive-ready visualizations and KPI dashboards for business decision makers and stakeholders"
-    specialties:
-      - "kpi visualization"
-      - "executive dashboards"
-      - "business metrics"
-      - "performance tracking"
-      - "trend visualization"
-      - "comparative analysis"
-    keywords:
-      - "dashboard"
-      - "kpi"
-      - "business intelligence"
-      - "executive"
-      - "metrics"
-      - "performance"
-      - "tracking"
-    required_columns: []
-    output_type: "dashboard_report"
-    dependencies: ["exploratory_data_analysis", "data_visualization"]
-    stage: "reporting"
-
 # ========================================
 # CUSTOMER & MARKETING ANALYTICS
 # ========================================
