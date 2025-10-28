@@ -113,10 +113,13 @@ export const apiEndpoints = {
   },
   
   // AI Analysis endpoints
-  analyzeData: (file, question, onUploadProgress) => {
+  analyzeData: (file, question, onUploadProgress, selectedAgents = null) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('question', question)
+    if (selectedAgents && Array.isArray(selectedAgents) && selectedAgents.length > 0) {
+      formData.append('selected_agents', JSON.stringify(selectedAgents))
+    }
     
     return api.post('/analyze-data', formData, {
       headers: {
@@ -124,6 +127,20 @@ export const apiEndpoints = {
       },
       onUploadProgress,
       timeout: 600000, // 10 minutes for analysis
+    })
+  },
+  
+  planAnalysis: (file, question, onUploadProgress) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('question', question)
+    
+    return api.post('/plan-analysis', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress,
+      timeout: 180000, // 3 minutes should be enough for planning
     })
   },
   

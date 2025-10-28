@@ -255,7 +255,8 @@ async def list_files(folder: Optional[str] = None):
 @app.post("/analyze-data")
 async def analyze_data(
     file: UploadFile = File(...),
-    question: str = Form(...)
+    question: str = Form(...),
+    selected_agents: Optional[str] = Form(None)
 ):
     """
     Analyze uploaded data using AI agents based on user question
@@ -287,10 +288,22 @@ async def analyze_data(
         logger.info(f"File validation passed: {file.filename}")
         
         # Process analysis request through agent workflow
+        # Parse optional selected_agents JSON string into list
+        selected_agents_list = None
+        if selected_agents:
+            try:
+                import json as _json
+                parsed = _json.loads(selected_agents)
+                if isinstance(parsed, list):
+                    selected_agents_list = [str(a) for a in parsed]
+            except Exception:
+                selected_agents_list = None
+
         analysis_result = await agent_service.analyze_request(
             file_content=file_content,
             filename=file.filename,
-            user_question=question.strip()
+            user_question=question.strip(),
+            selected_agents=selected_agents_list
         )
         
         # Add validation metadata
@@ -316,6 +329,39 @@ async def analyze_data(
             detail=f"Analysis failed: {str(e)}"
         )
 
+
+@app.post("/plan-analysis")
+async def plan_analysis(
+    file: UploadFile = File(...),
+    question: str = Form(...)
+):
+    """
+    Returns the data sample and the list of selected agents (in order) for preview.
+    """
+    try:
+        if not question or question.strip() == "":
+            raise ValueError("Analysis question is required")
+
+        await file.seek(0)
+        file_content = await file.read()
+        if not file_content:
+            raise ValueError("File is empty")
+
+        await file.seek(0)
+        # Validate file type
+        _ = await validate_data_file(file)
+
+        plan = await agent_service.plan_request(
+            file_content=file_content,
+            filename=file.filename,
+            user_question=question.strip()
+        )
+        return clean_nan_values(plan)
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Plan analysis failed: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Plan analysis failed: {str(e)}")
 
 @app.post("/preview-data")
 async def preview_data(

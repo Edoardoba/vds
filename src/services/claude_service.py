@@ -6,6 +6,7 @@ import json
 import logging
 import yaml
 from typing import Dict, Any, List, Optional
+from pathlib import Path
 import httpx
 from config import settings
 
@@ -31,10 +32,40 @@ class ClaudeService:
     def _load_agent_configs(self) -> Dict[str, Any]:
         """Load agent configurations from config.yaml"""
         try:
-            config_path = "src/agents/config.yaml"
-            with open(config_path, 'r', encoding='utf-8') as file:
-                config_data = yaml.safe_load(file)
-                return config_data.get('agents', {})
+            # Get the directory where this file is located
+            current_dir = Path(__file__).parent
+            project_root = current_dir.parent  # Go up one level from services/ to src/
+            
+            # Try multiple possible paths for the config file
+            possible_paths = [
+                project_root / "agents" / "config.yaml",  # src/agents/config.yaml
+                current_dir / "agents" / "config.yaml",   # services/agents/config.yaml
+                Path("agents/config.yaml"),               # agents/config.yaml (relative to cwd)
+                Path("src/agents/config.yaml"),           # src/agents/config.yaml (relative to cwd)
+            ]
+            
+            config_data = None
+            used_path = None
+            
+            for config_path in possible_paths:
+                try:
+                    if config_path.exists():
+                        with open(config_path, 'r', encoding='utf-8') as file:
+                            config_data = yaml.safe_load(file)
+                            used_path = str(config_path)
+                            logger.info(f"Successfully loaded config from: {config_path}")
+                            break
+                except Exception as e:
+                    logger.debug(f"Failed to load from {config_path}: {e}")
+                    continue
+            
+            if config_data is None:
+                logger.error(f"Could not find config.yaml in any of these paths: {[str(p) for p in possible_paths]}")
+                return {}
+            
+            agents_config = config_data.get('agents', {})
+            logger.info(f"Loaded {len(agents_config)} agent configs from {used_path}: {list(agents_config.keys())}")
+            return agents_config
         except Exception as e:
             logger.error(f"Error loading agent configs: {str(e)}")
             return {}
@@ -491,6 +522,7 @@ Response (JSON only):"""
         try:
             # Try to extract JSON array from response
             response = response.strip()
+            logger.info(f"Raw Claude response: {response}")
             
             # Handle cases where response might have extra text
             start_idx = response.find('[')
@@ -498,12 +530,20 @@ Response (JSON only):"""
             
             if start_idx != -1 and end_idx != -1:
                 json_str = response[start_idx:end_idx+1]
+                logger.info(f"Extracted JSON: {json_str}")
                 agent_names = json.loads(json_str)
+                logger.info(f"Parsed agent names: {agent_names}")
                 
                 # Validate agent names against available agents from config
                 valid_agents = list(self.agent_configs.keys())
+                logger.info(f"Valid agents from config: {valid_agents}")
                 
                 filtered_agents = [name for name in agent_names if name in valid_agents]
+                logger.info(f"Filtered agents: {filtered_agents}")
+                
+                if not filtered_agents:
+                    logger.warning(f"No valid agents found. Claude returned: {agent_names}, but config has: {valid_agents}")
+                
                 return filtered_agents  # Return all valid agents (no arbitrary limit)
             
             else:

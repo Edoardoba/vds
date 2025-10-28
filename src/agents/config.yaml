@@ -847,8 +847,8 @@ agents:
 
 # Agent selection configuration
 agent_selection:
-  max_agents: 3  # Maximum number of agents to select for a single analysis
-  similarity_threshold: 0.7  # Minimum similarity score to consider an agent
+  max_agents: null  # No limit on number of agents to select
+  similarity_threshold: 0.2  # Lower threshold to include more agents
   
 # Claude API configuration
 claude_api:

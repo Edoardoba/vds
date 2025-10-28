@@ -71,8 +71,6 @@ def start_server():
 
 def main():
     """Main startup function"""
-    print("CSV Upload Service - Startup Script")
-    print("=" * 40)
     
     # Check prerequisites
     if not check_python_version():

@@ -33,7 +33,11 @@ export default function DataUpload() {
   const [showPrompt, setShowPrompt] = useState(false)
   const [query, setQuery] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isPlanning, setIsPlanning] = useState(false)
   const [analysisResult, setAnalysisResult] = useState(null)
+  const [showPlanModal, setShowPlanModal] = useState(false)
+  const [plannedAgents, setPlannedAgents] = useState([]) // array of {name, display_name, description, ...}
+  const [selectedAgentNames, setSelectedAgentNames] = useState([]) // array of names
 
   const onDrop = useCallback((acceptedFiles) => {
     const newFiles = acceptedFiles.map(file => ({
@@ -178,31 +182,77 @@ export default function DataUpload() {
       return
     }
 
-    setIsAnalyzing(true)
+    // Step 1: Plan analysis to show agents modal
+    setIsPlanning(true)
     try {
-      // Call the new analyzeData endpoint which automatically selects agents
-      const response = await apiEndpoints.analyzeData(
-        fileToAnalyze, 
+      const planResponse = await apiEndpoints.planAnalysis(
+        fileToAnalyze,
         query.trim(),
         (progressEvent) => {
-          // Optional: show analysis progress
-          console.log('Analysis progress:', progressEvent)
+          console.log('Planning progress:', progressEvent)
         }
       )
-      
-      // Navigate to results page with analysis data
+
+      const agentInfos = planResponse?.data?.selected_agent_infos || []
+      const agentNames = agentInfos.map(a => a.name)
+      if (agentNames.length === 0) {
+        toast.error('No agents were selected during planning')
+        setIsPlanning(false)
+        return
+      }
+      setPlannedAgents(agentInfos)
+      setSelectedAgentNames(agentNames)
+      setShowPlanModal(true)
+    } catch (error) {
+      const errorMessage = error?.response?.data?.detail || error.message || 'Failed to plan analysis'
+      toast.error(errorMessage)
+    } finally {
+      setIsPlanning(false)
+    }
+  }
+
+  const toggleAgentSelection = (name) => {
+    setSelectedAgentNames(prev => {
+      if (prev.includes(name)) {
+        return prev.filter(n => n !== name)
+      }
+      return [...prev, name]
+    })
+  }
+
+  const confirmRunWithSelection = async () => {
+    if (selectedAgentNames.length === 0) {
+      toast.error('Please keep at least one agent selected')
+      return
+    }
+    const fileToAnalyze = files.find(f => f.status === 'success')?.file
+    if (!fileToAnalyze) {
+      toast.error('No successfully uploaded files found')
+      return
+    }
+    setIsAnalyzing(true)
+    try {
+      const response = await apiEndpoints.analyzeData(
+        fileToAnalyze,
+        query.trim(),
+        (progressEvent) => {
+          console.log('Analysis progress:', progressEvent)
+        },
+        selectedAgentNames
+      )
+
       navigate('/analysis-results', {
         state: {
           analysisResult: response.data,
           userQuestion: query.trim()
         }
       })
-
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Analysis failed'
       toast.error(errorMessage)
     } finally {
       setIsAnalyzing(false)
+      setShowPlanModal(false)
     }
   }
 
@@ -674,6 +724,81 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
           </div>
         </div>
       )}
+      
+      {/* Plan Modal */}
+      <AnimatePresence>
+        {showPlanModal && (
+          <motion.div 
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/40" onClick={() => !isAnalyzing && setShowPlanModal(false)} />
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="relative z-10 w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                    <Brain className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Planned Agents</h3>
+                </div>
+                <span className="text-sm text-gray-500">Review and deselect any you don't need</span>
+              </div>
+              <div className="p-6 max-h-[60vh] overflow-y-auto">
+                {isPlanning ? (
+                  <div className="flex items-center gap-3 text-gray-600">
+                    <Loader className="w-5 h-5 animate-spin" /> Planning agents...
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {plannedAgents.map((agent) => (
+                      <label key={agent.name} className="flex items-start gap-3 p-4 border border-gray-200 rounded-xl hover:border-indigo-200 transition-colors">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                          checked={selectedAgentNames.includes(agent.name)}
+                          onChange={() => toggleAgentSelection(agent.name)}
+                        />
+                        <div>
+                          <div className="font-semibold text-gray-900">{agent.display_name || agent.name}</div>
+                          {agent.description && (
+                            <div className="text-sm text-gray-600">{agent.description}</div>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="p-6 border-t border-gray-100 flex items-center justify-between">
+                <button
+                  onClick={() => setShowPlanModal(false)}
+                  className="px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100"
+                  disabled={isAnalyzing}
+                >
+                  Cancel
+                </button>
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={confirmRunWithSelection}
+                  disabled={isAnalyzing || selectedAgentNames.length === 0}
+                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isAnalyzing ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} 
+                  {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Feature Highlights - Only show in upload mode */}
       {!showPrompt && files.length === 0 && (

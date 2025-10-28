@@ -130,7 +130,7 @@ class AgentService:
             return {}
     
     async def analyze_request(self, file_content: bytes, filename: str, 
-                            user_question: str) -> Dict[str, Any]:
+                            user_question: str, selected_agents: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Process an analysis request through the complete agent workflow
         
@@ -149,11 +149,14 @@ class AgentService:
                 file_content, filename, sample_rows=5
             )
             
-            # Step 2: Select appropriate agents
+            # Step 2: Select appropriate agents (or use provided override)
             logger.info("Step 2: Selecting agents...")
-            selected_agents = await self._select_agents_smart(
-                data_sample, user_question
-            )
+            if selected_agents and isinstance(selected_agents, list) and len(selected_agents) > 0:
+                logger.info(f"Using client-provided agents: {selected_agents}")
+            else:
+                selected_agents = await self._select_agents_smart(
+                    data_sample, user_question
+                )
             
             # Step 3: Execute selected agents
             logger.info(f"Step 3: Executing {len(selected_agents)} agents...")
@@ -182,6 +185,48 @@ class AgentService:
             
         except Exception as e:
             logger.error(f"Error in analyze_request: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+    async def plan_request(self, file_content: bytes, filename: str, 
+                           user_question: str) -> Dict[str, Any]:
+        """Plan which agents to run and return data sample plus agent metadata without execution."""
+        try:
+            # Create data sample
+            data_sample = self.data_processor.read_file_sample(
+                file_content, filename, sample_rows=5
+            )
+
+            # Select agents
+            selected_agents = await self._select_agents_smart(data_sample, user_question)
+
+            # Build agent info for the selected agents
+            selected_agent_infos: List[Dict[str, Any]] = []
+            for agent_name in selected_agents:
+                agent = self.agents.get(agent_name)
+                if not agent:
+                    continue
+                selected_agent_infos.append({
+                    "name": agent.name,
+                    "display_name": getattr(agent, "display_name", agent.name),
+                    "description": getattr(agent, "description", ""),
+                    "specialties": getattr(agent, "specialties", []),
+                    "output_type": getattr(agent, "output_type", "text"),
+                })
+
+            return {
+                "success": True,
+                "timestamp": datetime.utcnow().isoformat(),
+                "data_sample": data_sample,
+                "user_question": user_question,
+                "selected_agents": selected_agents,
+                "selected_agent_infos": selected_agent_infos,
+            }
+        except Exception as e:
+            logger.error(f"Error in plan_request: {str(e)}")
             return {
                 "success": False,
                 "error": str(e),
@@ -224,10 +269,10 @@ class AgentService:
             # Sort by confidence score (descending)
             agent_scores.sort(key=lambda x: x[1], reverse=True)
             
-            # Select top 3 agents with confidence > 0.2
+            # Select all agents with confidence > 0.2 (no limit)
             selected_agents = []
             for agent_name, score in agent_scores:
-                if score > 0.2 and len(selected_agents) < 3:
+                if score > 0.2:
                     selected_agents.append(agent_name)
             
             # Final fallback: if no agents selected, use defaults
