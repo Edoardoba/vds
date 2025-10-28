@@ -440,7 +440,7 @@ export default function DataUpload() {
                       <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
                         <Brain className="w-6 h-6 text-white" />
                       </div>
-                      <h2 className="text-2xl font-bold text-gray-900">Ask Banta Anything</h2>
+                      <h2 className="text-2xl font-bold text-gray-900">Ask Banta!</h2>
                     </div>
                     <motion.button
                       whileHover={{ scale: 1.05 }}
@@ -769,7 +769,7 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
                     className="px-8 py-4 bg-white text-green-600 rounded-xl font-bold hover:bg-green-50 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-3"
                   >
                     <Brain className="w-5 h-5" />
-                    Ask Banta Anything
+                    Ask Me Anything
                     <ArrowRight className="w-5 h-5" />
                   </motion.button>
                 </div>

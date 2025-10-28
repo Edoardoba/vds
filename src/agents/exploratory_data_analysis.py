@@ -29,67 +29,62 @@ class ExploratoryDataAnalysisAgent:
         self.output_type = "exploration_report"
     
     def get_analysis_prompt(self, data_sample: Dict[str, Any], user_question: str) -> str:
-        """Generate the specific prompt for exploratory data analysis"""
+        """Generate intelligent, context-aware prompt for exploratory data analysis"""
+        
+        # Analyze dataset characteristics
+        columns = data_sample['columns']
+        data_types = data_sample['data_types']
+        total_rows = data_sample['total_rows']
+        missing_values = data_sample['missing_values']
+        
+        # Detect data characteristics
+        numerical_cols = [col for col, dtype in data_types.items() if dtype in ['int64', 'float64', 'int32', 'float32']]
+        categorical_cols = [col for col, dtype in data_types.items() if dtype in ['object', 'category', 'bool']]
+        datetime_cols = [col for col, dtype in data_types.items() if dtype in ['datetime64[ns]', 'datetime64']]
+        
+        # Analyze user intent
+        question_lower = user_question.lower()
+        
+        # Determine analysis focus based on user request
+        analysis_focus = self._determine_analysis_focus(question_lower, columns, data_types)
+        
+        # Determine appropriate techniques based on data characteristics
+        techniques = self._select_analysis_techniques(analysis_focus, numerical_cols, categorical_cols, datetime_cols, total_rows)
         
         return f"""
-You are an expert data analyst specializing in exploratory data analysis and business insight generation.
+You are an expert data analyst specializing in intelligent exploratory data analysis that adapts to specific user needs and dataset characteristics.
 
-**Task: Comprehensive Exploratory Data Analysis**
+**Task: Context-Aware Exploratory Data Analysis**
 
 **Data Overview:**
 - Dataset: {data_sample['file_info']['filename']}
-- Total records: {data_sample['total_rows']:,}
-- Available columns: {', '.join(data_sample['columns'])}
-- Data types: {data_sample['data_types']}
-- Missing values: {data_sample['missing_values']}
+- Total records: {total_rows:,}
+- Available columns: {', '.join(columns)}
+- Data types: {data_types}
+- Missing values: {missing_values}
 - Sample data: {data_sample['sample_data'][:3]}
+
+**Data Characteristics Detected:**
+- Numerical columns ({len(numerical_cols)}): {', '.join(numerical_cols[:5])}{'...' if len(numerical_cols) > 5 else ''}
+- Categorical columns ({len(categorical_cols)}): {', '.join(categorical_cols[:5])}{'...' if len(categorical_cols) > 5 else ''}
+- Datetime columns ({len(datetime_cols)}): {', '.join(datetime_cols)}
 
 **User Request:** "{user_question}"
 
+**Analysis Focus:** {analysis_focus['focus']}
+**Primary Objectives:** {', '.join(analysis_focus['objectives'])}
+
 **Your mission:**
-Generate complete, production-ready Python code to perform comprehensive exploratory data analysis including:
+Generate focused, production-ready Python code that performs ONLY the most relevant exploratory analysis for this specific request and dataset. Focus on:
 
-1. **Data Structure & Overview:**
-   - Comprehensive dataset summary with key statistics
-   - Data type analysis and memory usage optimization
-   - Missing data patterns and impact assessment
-   - Basic data quality indicators
-
-2. **Univariate Analysis:**
-   - Distribution analysis for numerical variables (histograms, box plots, QQ plots)
-   - Frequency analysis for categorical variables
-   - Outlier detection and characterization
-   - Central tendency and variability measures
-
-3. **Bivariate & Multivariate Analysis:**
-   - Correlation matrix with heatmap visualization
-   - Scatter plot matrix for numerical relationships
-   - Cross-tabulation analysis for categorical relationships
-   - Feature interaction identification
-
-4. **Pattern Discovery:**
-   - Time series patterns (if temporal data exists)
-   - Seasonal and trend analysis
-   - Segmentation patterns and clusters
-   - Anomaly and unusual pattern detection
-
-5. **Business Insight Generation:**
-   - Key findings and patterns with business implications
-   - Actionable insights for decision making
-   - Data-driven recommendations
-   - Hypothesis generation for further analysis
-
-6. **Advanced Visualizations:**
-   - Interactive and publication-ready charts
-   - Multi-dimensional visualizations
-   - Business dashboard elements
-   - Story-driven visual narratives
+{self._build_technique_instructions(techniques)}
 
 **Requirements:**
 - Assume data is loaded as pandas DataFrame 'df'
-- Save all outputs to current directory
-- Create comprehensive visualization suite as PNG files
-- Generate executive summary as 'eda_insights_report.txt'
+- Generate ONLY relevant analysis based on user request and data characteristics
+- Save outputs to current directory
+- Create targeted visualizations as PNG files
+- Generate focused insights report as 'eda_insights_report.txt'
 - Export key findings as 'key_findings.csv'
 
 **Code Structure:**
@@ -98,8 +93,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy import stats
-from scipy.stats import pearsonr, spearmanr
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -107,17 +100,131 @@ warnings.filterwarnings('ignore')
 plt.style.use('default')
 sns.set_palette("husl")
 
-# Your complete exploratory data analysis code here...
+# Your focused exploratory data analysis code here...
+# Focus on: {analysis_focus['focus']}
+# Key techniques: {', '.join(techniques['primary'])}
 ```
 
 Respond with ONLY a JSON object:
 {{
-    "code": "complete Python code for comprehensive exploratory data analysis",
-    "description": "Deep dive exploratory analysis with pattern discovery, correlation analysis, and actionable business insights",
-    "outputs": ["eda_insights_report.txt", "key_findings.csv", "data_overview.png", "correlation_matrix.png", "distribution_analysis.png", "pattern_discovery.png", "business_insights.png"],
-    "insights": "Key patterns, relationships, and actionable business insights discovered through comprehensive exploratory analysis"
+    "code": "focused Python code for targeted exploratory data analysis",
+    "description": "{analysis_focus['description']}",
+    "insights": "Key findings and actionable insights specific to the user's request and dataset characteristics"
 }}
 """
+
+    def _determine_analysis_focus(self, question_lower: str, columns: List[str], data_types: Dict[str, str]) -> Dict[str, Any]:
+        """Determine the analysis focus based on user request and data characteristics"""
+        
+        # Detect user intent patterns
+        if any(word in question_lower for word in ['correlation', 'relationship', 'related', 'associate']):
+            return {
+                'focus': 'Relationship Analysis',
+                'objectives': ['Identify correlations between variables', 'Discover hidden relationships', 'Understand variable interactions'],
+                'description': 'Focused correlation and relationship analysis to understand variable interactions'
+            }
+        
+        elif any(word in question_lower for word in ['pattern', 'trend', 'seasonal', 'time', 'temporal']):
+            return {
+                'focus': 'Pattern Discovery',
+                'objectives': ['Identify temporal patterns', 'Detect trends and seasonality', 'Find recurring patterns'],
+                'description': 'Pattern discovery analysis focusing on trends, seasonality, and recurring behaviors'
+            }
+        
+        elif any(word in question_lower for word in ['distribution', 'spread', 'outlier', 'skew', 'normal']):
+            return {
+                'focus': 'Distribution Analysis',
+                'objectives': ['Analyze data distributions', 'Identify outliers and anomalies', 'Understand data spread'],
+                'description': 'Distribution-focused analysis examining data spread, outliers, and statistical properties'
+            }
+        
+        elif any(word in question_lower for word in ['segment', 'group', 'cluster', 'category', 'classification']):
+            return {
+                'focus': 'Segmentation Analysis',
+                'objectives': ['Identify natural groupings', 'Discover customer segments', 'Understand categorical patterns'],
+                'description': 'Segmentation analysis to identify natural groupings and categorical patterns'
+            }
+        
+        elif any(word in question_lower for word in ['summary', 'overview', 'describe', 'understand', 'explore']):
+            return {
+                'focus': 'Comprehensive Overview',
+                'objectives': ['Provide data summary', 'Generate key insights', 'Create executive overview'],
+                'description': 'Comprehensive exploratory analysis providing data overview and key business insights'
+            }
+        
+        else:
+            return {
+                'focus': 'Adaptive Analysis',
+                'objectives': ['Analyze based on data characteristics', 'Generate relevant insights', 'Provide actionable findings'],
+                'description': 'Adaptive exploratory analysis tailored to dataset characteristics and user context'
+            }
+
+    def _select_analysis_techniques(self, analysis_focus: Dict[str, Any], numerical_cols: List[str], 
+                                  categorical_cols: List[str], datetime_cols: List[str], total_rows: int) -> Dict[str, List[str]]:
+        """Select appropriate analysis techniques based on focus and data characteristics"""
+        
+        techniques = {
+            'primary': [],
+            'secondary': [],
+            'visualizations': []
+        }
+        
+        focus = analysis_focus['focus']
+        
+        if focus == 'Relationship Analysis':
+            techniques['primary'] = ['correlation_matrix', 'scatter_plots', 'cross_tabulation']
+            techniques['secondary'] = ['feature_interactions', 'association_rules']
+            techniques['visualizations'] = ['correlation_heatmap', 'scatter_matrix', 'pairplot']
+        
+        elif focus == 'Pattern Discovery':
+            techniques['primary'] = ['time_series_decomposition', 'trend_analysis', 'seasonality_detection']
+            techniques['secondary'] = ['autocorrelation', 'periodogram']
+            techniques['visualizations'] = ['time_series_plot', 'seasonal_decomposition', 'trend_analysis']
+        
+        elif focus == 'Distribution Analysis':
+            techniques['primary'] = ['distribution_analysis', 'outlier_detection', 'normality_tests']
+            techniques['secondary'] = ['skewness_kurtosis', 'quantile_analysis']
+            techniques['visualizations'] = ['histogram', 'box_plot', 'qq_plot', 'violin_plot']
+        
+        elif focus == 'Segmentation Analysis':
+            techniques['primary'] = ['clustering_analysis', 'categorical_analysis', 'group_statistics']
+            techniques['secondary'] = ['rfm_analysis', 'behavioral_segmentation']
+            techniques['visualizations'] = ['cluster_plot', 'categorical_distribution', 'segment_comparison']
+        
+        else:  # Comprehensive Overview or Adaptive Analysis
+            # Select techniques based on data characteristics
+            if len(numerical_cols) > 0:
+                techniques['primary'].append('descriptive_statistics')
+                techniques['primary'].append('distribution_summary')
+            if len(categorical_cols) > 0:
+                techniques['primary'].append('categorical_summary')
+            if len(datetime_cols) > 0:
+                techniques['primary'].append('temporal_summary')
+            if total_rows > 1000:
+                techniques['secondary'].append('sampling_analysis')
+        
+        return techniques
+
+    def _build_technique_instructions(self, techniques: Dict[str, List[str]]) -> str:
+        """Build specific instructions for the selected techniques"""
+        
+        instructions = []
+        
+        for technique in techniques['primary']:
+            if technique == 'correlation_matrix':
+                instructions.append("• **Correlation Analysis**: Calculate correlation matrices and identify strong relationships")
+            elif technique == 'distribution_analysis':
+                instructions.append("• **Distribution Analysis**: Analyze data distributions, detect outliers, and assess normality")
+            elif technique == 'time_series_decomposition':
+                instructions.append("• **Time Series Analysis**: Decompose temporal patterns and identify trends/seasonality")
+            elif technique == 'clustering_analysis':
+                instructions.append("• **Clustering Analysis**: Identify natural groupings and segment patterns")
+            elif technique == 'descriptive_statistics':
+                instructions.append("• **Descriptive Statistics**: Generate comprehensive statistical summaries")
+            elif technique == 'categorical_summary':
+                instructions.append("• **Categorical Analysis**: Analyze categorical variable distributions and patterns")
+        
+        return '\n'.join(instructions) if instructions else "• **Adaptive Analysis**: Focus on the most relevant analysis based on data characteristics"
 
     def matches_request(self, user_question: str, data_columns: List[str]) -> float:
         """

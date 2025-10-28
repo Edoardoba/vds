@@ -29,10 +29,13 @@ class AgentService:
         self.agents = self._load_agents()
         
     def _load_agents(self) -> Dict[str, Any]:
-        """Dynamically load agent classes from individual files"""
+        """Dynamically load agent classes from individual files with centralized config"""
         agents = {}
         
         try:
+            # Load agent configurations from config.yaml
+            agent_configs = self._load_agent_configs()
+            
             agents_dir = Path(__file__).parent.parent / "agents"
             
             # List of agent modules to load
@@ -90,8 +93,19 @@ class AgentService:
                     
                     # Instantiate the agent
                     agent_instance = agent_class()
-                    agents[agent_instance.name] = agent_instance
                     
+                    # Overlay metadata from config.yaml if available
+                    if module_name in agent_configs:
+                        config = agent_configs[module_name]
+                        agent_instance.display_name = config.get('name', agent_instance.display_name)
+                        agent_instance.description = config.get('description', agent_instance.description)
+                        agent_instance.specialties = config.get('specialties', agent_instance.specialties)
+                        agent_instance.keywords = config.get('keywords', agent_instance.keywords)
+                        agent_instance.output_type = config.get('output_type', agent_instance.output_type)
+                        
+                        logger.info(f"Applied config for agent: {agent_instance.name}")
+                    
+                    agents[agent_instance.name] = agent_instance
                     logger.info(f"Loaded agent: {agent_instance.name}")
                     
                 except Exception as e:
@@ -102,6 +116,17 @@ class AgentService:
             
         except Exception as e:
             logger.error(f"Error loading agents: {str(e)}")
+            return {}
+    
+    def _load_agent_configs(self) -> Dict[str, Any]:
+        """Load agent configurations from config.yaml"""
+        try:
+            config_path = Path(__file__).parent.parent / "agents" / "config.yaml"
+            with open(config_path, 'r', encoding='utf-8') as file:
+                config_data = yaml.safe_load(file)
+                return config_data.get('agents', {})
+        except Exception as e:
+            logger.error(f"Error loading agent configs: {str(e)}")
             return {}
     
     async def analyze_request(self, file_content: bytes, filename: str, 

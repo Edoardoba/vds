@@ -4,6 +4,7 @@ Claude API integration service for agent selection and code generation
 
 import json
 import logging
+import yaml
 from typing import Dict, Any, List, Optional
 import httpx
 from config import settings
@@ -21,8 +22,236 @@ class ClaudeService:
         self.temperature = settings.CLAUDE_TEMPERATURE
         self.base_url = "https://api.anthropic.com/v1/messages"
         
+        # Load agent configurations dynamically
+        self.agent_configs = self._load_agent_configs()
+        
         if not self.api_key:
             logger.warning("ANTHROPIC_API_KEY not found in environment variables")
+    
+    def _load_agent_configs(self) -> Dict[str, Any]:
+        """Load agent configurations from config.yaml"""
+        try:
+            config_path = "src/agents/config.yaml"
+            with open(config_path, 'r', encoding='utf-8') as file:
+                config_data = yaml.safe_load(file)
+                return config_data.get('agents', {})
+        except Exception as e:
+            logger.error(f"Error loading agent configs: {str(e)}")
+            return {}
+    
+    def _generate_agents_section(self) -> str:
+        """Generate the agents section for the prompt dynamically from config"""
+        if not self.agent_configs:
+            return "No agents available"
+        
+        agents_text = []
+        for i, (agent_key, agent_config) in enumerate(self.agent_configs.items(), 1):
+            name = agent_config.get('name', agent_key)
+            description = agent_config.get('description', '')
+            specialties = agent_config.get('specialties', [])
+            
+            # Format specialties (limit to top 3 for cleaner prompt)
+            specialties_text = ', '.join(specialties[:3])
+            
+            agent_entry = f"""{i}. **{agent_key}** - {name}
+   - Specializes in: {specialties_text}"""
+            
+            agents_text.append(agent_entry)
+        
+        return '\n\n'.join(agents_text)
+    
+    def _analyze_data_patterns(self, data_sample: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze data patterns to determine what types of analysis are possible"""
+        columns = data_sample.get('columns', [])
+        data_types = data_sample.get('data_types', {})
+        
+        patterns = {
+            'has_customer_data': False,
+            'has_time_data': False,
+            'has_financial_data': False,
+            'has_categorical_data': False,
+            'has_numerical_data': False,
+            'has_id_columns': False,
+            'has_text_data': False,
+            'has_geographic_data': False
+        }
+        
+        # Analyze column patterns
+        for col in columns:
+            col_lower = col.lower()
+            dtype = str(data_types.get(col, '')).lower()
+            
+            # Customer/ID patterns
+            if any(pattern in col_lower for pattern in ['customer', 'user', 'client', 'id', 'uuid']):
+                patterns['has_customer_data'] = True
+                patterns['has_id_columns'] = True
+            
+            # Time patterns
+            if any(pattern in col_lower for pattern in ['date', 'time', 'timestamp', 'created', 'updated', 'year', 'month', 'day']):
+                patterns['has_time_data'] = True
+            
+            # Financial patterns
+            if any(pattern in col_lower for pattern in ['revenue', 'price', 'cost', 'amount', 'value', 'sales', 'profit', 'margin', 'budget']):
+                patterns['has_financial_data'] = True
+            
+            # Geographic patterns
+            if any(pattern in col_lower for pattern in ['location', 'address', 'city', 'state', 'country', 'region', 'zip', 'lat', 'lon']):
+                patterns['has_geographic_data'] = True
+            
+            # Data type analysis
+            if dtype in ['object', 'string']:
+                patterns['has_categorical_data'] = True
+                patterns['has_text_data'] = True
+            elif dtype in ['int64', 'float64', 'int32', 'float32']:
+                patterns['has_numerical_data'] = True
+        
+        return patterns
+    
+    def _prefilter_agents(self, data_sample: Dict[str, Any], user_question: str) -> List[str]:
+        """Pre-filter agents based on data compatibility and question relevance"""
+        patterns = self._analyze_data_patterns(data_sample)
+        question_lower = user_question.lower()
+        
+        compatible_agents = []
+        incompatible_agents = []
+        
+        for agent_key, agent_config in self.agent_configs.items():
+            keywords = agent_config.get('keywords', [])
+            specialties = agent_config.get('specialties', [])
+            
+            # Check if agent is relevant to the question
+            question_relevant = any(
+                keyword.lower() in question_lower 
+                for keyword in keywords + specialties
+            )
+            
+            # Check data compatibility - be more lenient
+            data_compatible = True
+            required_columns = agent_config.get('required_columns', [])
+            
+            if required_columns:
+                # Only exclude if absolutely incompatible (missing critical data types)
+                if 'customer_id' in required_columns and not patterns['has_customer_data']:
+                    data_compatible = False
+                elif 'date' in required_columns and not patterns['has_time_data']:
+                    data_compatible = False
+                elif 'revenue' in required_columns and not patterns['has_financial_data']:
+                    data_compatible = False
+                elif 'location' in required_columns and not patterns['has_geographic_data']:
+                    data_compatible = False
+            
+            # Include agents that are either relevant to question OR compatible with data
+            if question_relevant or data_compatible:
+                score = 0
+                if question_relevant:
+                    score += 1.0  # Higher weight for question relevance
+                if data_compatible:
+                    score += 0.5
+                
+                compatible_agents.append((agent_key, score))
+            else:
+                incompatible_agents.append(agent_key)
+        
+        # Sort by score and return all compatible agents (no arbitrary limit)
+        compatible_agents.sort(key=lambda x: x[1], reverse=True)
+        return [agent[0] for agent in compatible_agents]
+    
+    def _resolve_dependencies(self, selected_agents: List[str]) -> List[str]:
+        """Resolve agent dependencies and return agents in correct execution order"""
+        if not selected_agents:
+            return []
+        
+        # Get all agent configs
+        agent_configs = self.agent_configs
+        
+        # Build dependency graph
+        resolved = []
+        remaining = set(selected_agents)
+        
+        while remaining:
+            # Find agents with no unresolved dependencies
+            ready_agents = []
+            for agent in remaining:
+                dependencies = agent_configs.get(agent, {}).get('dependencies', [])
+                # Check if all dependencies are resolved OR not in selected agents
+                unresolved_deps = [dep for dep in dependencies if dep not in resolved and dep in selected_agents]
+                if not unresolved_deps:
+                    ready_agents.append(agent)
+            
+            if not ready_agents:
+                # Circular dependency or missing dependency - add remaining agents
+                logger.warning(f"Circular dependency detected or missing dependencies for: {remaining}")
+                resolved.extend(sorted(remaining))
+                break
+            
+            # Add ready agents in alphabetical order for consistency
+            ready_agents.sort()
+            resolved.extend(ready_agents)
+            remaining -= set(ready_agents)
+        
+        return resolved
+    
+    def _generate_filtered_agents_section(self, agent_keys: List[str]) -> str:
+        """Generate agents section for only the filtered agents"""
+        if not agent_keys:
+            return "No compatible agents found"
+        
+        agents_text = []
+        for i, agent_key in enumerate(agent_keys, 1):
+            if agent_key in self.agent_configs:
+                agent_config = self.agent_configs[agent_key]
+                name = agent_config.get('name', agent_key)
+                specialties = agent_config.get('specialties', [])
+                
+                # Format specialties (limit to top 3 for cleaner prompt)
+                specialties_text = ', '.join(specialties[:3])
+                
+                agent_entry = f"""{i}. **{agent_key}** - {name}
+   - Specializes in: {specialties_text}"""
+                
+                agents_text.append(agent_entry)
+        
+        return '\n\n'.join(agents_text)
+    
+    def _format_pattern_summary(self, patterns: Dict[str, Any]) -> str:
+        """Format data patterns into a readable summary"""
+        detected_patterns = []
+        
+        if patterns['has_customer_data']:
+            detected_patterns.append("[+] Customer/ID data detected")
+        if patterns['has_time_data']:
+            detected_patterns.append("[+] Time series data detected")
+        if patterns['has_financial_data']:
+            detected_patterns.append("[+] Financial/revenue data detected")
+        if patterns['has_geographic_data']:
+            detected_patterns.append("[+] Geographic/location data detected")
+        if patterns['has_categorical_data']:
+            detected_patterns.append("[+] Categorical/text data detected")
+        if patterns['has_numerical_data']:
+            detected_patterns.append("[+] Numerical data detected")
+        
+        if not detected_patterns:
+            return "No specific patterns detected - general analysis agents recommended"
+        
+        return '\n'.join(detected_patterns)
+    
+    def _get_default_agents(self) -> List[str]:
+        """Get default agents for fallback scenarios"""
+        # Try to use common agents from config, fallback to hardcoded if config not available
+        if self.agent_configs:
+            # Prefer these agents in order of preference
+            preferred_agents = [
+                "data_quality_audit", "exploratory_data_analysis", "statistical_analysis",
+                "business_intelligence_dashboard"
+            ]
+            
+            # Return all available agents from preferred list (no arbitrary limit)
+            available_defaults = [agent for agent in preferred_agents if agent in self.agent_configs]
+            if available_defaults:
+                return available_defaults
+        
+        # Fallback to hardcoded defaults if config not available
+        return ["data_quality_audit", "exploratory_data_analysis", "statistical_analysis"]
     
     async def select_agents(self, data_sample: Dict[str, Any], user_question: str) -> List[str]:
         """
@@ -37,19 +266,25 @@ class ClaudeService:
         """
         try:
             prompt = self._create_agent_selection_prompt(data_sample, user_question)
+
+            print("AA", prompt)
             
             response = await self._call_claude_api(prompt)
             
             # Parse the JSON response to get agent names
             agent_names = self._parse_agent_selection_response(response)
             
+            # Resolve dependencies and return agents in correct execution order
+            ordered_agents = self._resolve_dependencies(agent_names)
+            
             logger.info(f"Selected agents: {agent_names}")
-            return agent_names
+            logger.info(f"Execution order: {ordered_agents}")
+            return ordered_agents
             
         except Exception as e:
             logger.error(f"Error selecting agents: {str(e)}")
             # Fallback to default agents
-            return ["data_cleaning", "data_visualization", "statistical_analysis"]
+            return self._get_default_agents()
     
     async def generate_agent_code(self, agent_name: str, agent_config: Dict[str, Any], 
                                 data_sample: Dict[str, Any], user_question: str) -> Dict[str, Any]:
@@ -135,6 +370,16 @@ class ClaudeService:
     def _create_agent_selection_prompt(self, data_sample: Dict[str, Any], user_question: str) -> str:
         """Create prompt for agent selection"""
         
+        # Pre-filter agents based on data patterns and question relevance
+        compatible_agents = self._prefilter_agents(data_sample, user_question)
+        
+        # Generate agent list only for compatible agents
+        agents_section = self._generate_filtered_agents_section(compatible_agents)
+        
+        # Analyze data patterns for additional context
+        patterns = self._analyze_data_patterns(data_sample)
+        pattern_summary = self._format_pattern_summary(patterns)
+        
         return f"""
 You are an expert data analyst tasked with selecting the most appropriate AI analysis agents for a specific data analysis request.
 
@@ -142,6 +387,9 @@ You are an expert data analyst tasked with selecting the most appropriate AI ana
 - File: {data_sample['file_info']['filename']}
 - Total rows: {data_sample['total_rows']:,}
 - Columns: {len(data_sample['columns'])} ({', '.join(data_sample['columns'])})
+
+**Data Patterns Detected:**
+{pattern_summary}
 
 **Sample Data (first {len(data_sample['sample_data'])} rows):**
 {json.dumps(data_sample['sample_data'], indent=2)}
@@ -155,59 +403,35 @@ You are an expert data analyst tasked with selecting the most appropriate AI ana
 **User's Analysis Request:**
 "{user_question}"
 
-**Available Specialized AI Agents:**
+**Most Compatible AI Agents (pre-filtered based on your data and question):**
 
-1. **churn_analysis** - Customer Churn Prediction
-   - Specializes in: churn prediction, customer retention analysis, customer lifetime value, attrition modeling
-   - Best for: Questions about customer leaving, subscription cancellations, retention strategies
-   - Requires: customer_id column and behavioral/transaction data
-
-2. **data_cleaning** - Data Quality & Preprocessing  
-   - Specializes in: missing value handling, outlier detection, duplicate removal, data standardization
-   - Best for: Data quality issues, preprocessing needs, inconsistent data formats
-   - Universal: Can work with any dataset to improve quality
-
-3. **data_visualization** - Exploratory Data Analysis
-   - Specializes in: statistical visualization, correlation analysis, distribution analysis, trend identification
-   - Best for: Understanding data patterns, exploring relationships, creating charts and graphs
-   - Universal: Valuable for most analysis requests to understand data structure
-
-4. **customer_segmentation** - Customer Clustering
-   - Specializes in: k-means clustering, behavioral segmentation, RFM analysis, market segmentation  
-   - Best for: Grouping customers, identifying personas, targeted marketing analysis
-   - Requires: customer_id and behavioral/demographic features
-
-5. **regression_analysis** - Predictive Modeling
-   - Specializes in: linear/non-linear regression, feature importance, predictive modeling
-   - Best for: Predicting continuous values, understanding variable relationships, forecasting
-   - Requires: numerical target variables and predictor features
-
-6. **statistical_analysis** - Statistical Testing
-   - Specializes in: hypothesis testing, t-tests, correlation analysis, statistical significance
-   - Best for: Comparing groups, testing relationships, statistical validation
-   - Works with: any numerical or categorical data for statistical comparisons
-
-7. **time_series_analysis** - Temporal Analysis
-   - Specializes in: trend analysis, seasonality detection, time-based forecasting, ARIMA modeling
-   - Best for: Time-based patterns, forecasting future values, temporal trends
-   - Requires: date/time columns and time-ordered data
+{agents_section}
 
 **Selection Criteria:**
 1. **Relevance**: Which agents directly address the user's question?
-2. **Data Compatibility**: Which agents can work with the available data columns/types?
+2. **Data Compatibility**: Which agents can work with the detected data patterns?
 3. **Value**: What combination provides the most comprehensive insights?
-4. **Dependencies**: Some analyses build on others (e.g., cleaning before visualization)
+4. **Dependencies**: Some analyses build on others (e.g., quality audit before analysis)
 
 **Instructions:**
-- Select 2-4 agents maximum for optimal analysis depth
-- Always consider data_cleaning if data quality issues are evident
-- Include data_visualization for most requests as it provides crucial insights
+- Select ALL agents that would be helpful to answer the user's question
+- There is no minimum or maximum - select as many or as few as needed
+- The system will automatically resolve dependencies and execution order
+- Consider data_quality_audit if data quality issues are evident
+- Include exploratory_data_analysis for most requests as it provides crucial insights
 - Prioritize agents that directly answer the user's question
-- Consider the sequence: cleaning → exploration → specialized analysis
+- Don't worry about execution order - dependencies will be resolved automatically
+- Don't limit yourself - if multiple agents would provide valuable insights, include them all
 
-Respond with ONLY a JSON array of agent names in execution order:
+**Execution Stages:**
+- Data Preparation: data_quality_audit, data_cleaning
+- Exploration: exploratory_data_analysis, data_visualization  
+- Analysis: statistical_analysis, regression_analysis, predictive_modeling, specialized analysis agents
+- Reporting: business_intelligence_dashboard
 
-Example: ["data_cleaning", "data_visualization", "statistical_analysis"]
+Respond with ONLY a JSON array of agent names (order will be resolved automatically):
+
+Example: ["data_quality_audit", "exploratory_data_analysis", "customer_segmentation", "revenue_forecasting"]
 
 Response (JSON array only):"""
     
@@ -276,23 +500,19 @@ Response (JSON only):"""
                 json_str = response[start_idx:end_idx+1]
                 agent_names = json.loads(json_str)
                 
-                # Validate agent names
-                valid_agents = [
-                    "churn_analysis", "data_cleaning", "data_visualization",
-                    "customer_segmentation", "regression_analysis", 
-                    "statistical_analysis", "time_series_analysis"
-                ]
+                # Validate agent names against available agents from config
+                valid_agents = list(self.agent_configs.keys())
                 
                 filtered_agents = [name for name in agent_names if name in valid_agents]
-                return filtered_agents[:3]  # Limit to 3 agents max
+                return filtered_agents  # Return all valid agents (no arbitrary limit)
             
             else:
                 logger.warning("Could not parse agent selection response, using defaults")
-                return ["data_cleaning", "data_visualization", "statistical_analysis"]
+                return self._get_default_agents()
                 
         except Exception as e:
             logger.error(f"Error parsing agent selection: {str(e)}")
-            return ["data_cleaning", "data_visualization", "statistical_analysis"]
+            return self._get_default_agents()
     
     def _parse_code_generation_response(self, response: str) -> Dict[str, Any]:
         """Parse Claude's code generation response"""

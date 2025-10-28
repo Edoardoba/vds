@@ -3,6 +3,29 @@
 # ========================================
 
 agents:
+  data_cleaning:
+    name: "Data Cleaning & Preprocessing"
+    description: "Handles missing values, duplicates, outliers, and data type conversions to prepare data for analysis"
+    specialties:
+      - "missing value imputation"
+      - "outlier detection"
+      - "duplicate removal"
+      - "data type conversion"
+      - "data standardization"
+      - "data validation"
+    keywords:
+      - "clean"
+      - "preprocess"
+      - "missing values"
+      - "outliers"
+      - "duplicates"
+      - "data quality"
+      - "standardization"
+    required_columns: []
+    output_type: "cleaned_data"
+    dependencies: []
+    stage: "data_preparation"
+
   data_quality_audit:
     name: "Data Quality Audit"
     description: "Comprehensive data quality assessment focusing on completeness, accuracy, consistency, and validity of business data"
@@ -23,6 +46,8 @@ agents:
       - "assessment"
     required_columns: []
     output_type: "quality_report"
+    dependencies: []
+    stage: "data_preparation"
 
   exploratory_data_analysis:
     name: "Exploratory Data Analysis"
@@ -44,6 +69,34 @@ agents:
       - "understand"
     required_columns: []
     output_type: "exploration_report"
+    dependencies: ["data_quality_audit", "data_cleaning"]
+    stage: "exploration"
+
+  data_visualization:
+    name: "Data Visualization & EDA"
+    description: "Creates comprehensive visualizations and performs exploratory data analysis to uncover patterns and insights"
+    specialties:
+      - "exploratory data analysis"
+      - "statistical visualization"
+      - "correlation analysis"
+      - "distribution analysis"
+      - "trend identification"
+      - "chart creation"
+    keywords:
+      - "visualize"
+      - "plot"
+      - "chart"
+      - "graph"
+      - "explore"
+      - "eda"
+      - "correlation"
+      - "distribution"
+      - "trend"
+      - "pattern"
+    required_columns: []
+    output_type: "visualization_report"
+    dependencies: ["exploratory_data_analysis"]
+    stage: "exploration"
 
   business_intelligence_dashboard:
     name: "Business Intelligence Dashboard"
@@ -65,6 +118,8 @@ agents:
       - "tracking"
     required_columns: []
     output_type: "dashboard_report"
+    dependencies: ["exploratory_data_analysis", "data_visualization"]
+    stage: "reporting"
 
 # ========================================
 # CUSTOMER & MARKETING ANALYTICS
@@ -457,6 +512,56 @@ agents:
 # ADVANCED ANALYTICS
 # ========================================
 
+  statistical_analysis:
+    name: "Statistical Analysis"
+    description: "Conducts comprehensive statistical tests, hypothesis testing, and descriptive statistics analysis"
+    specialties:
+      - "descriptive statistics"
+      - "hypothesis testing"
+      - "t-tests"
+      - "chi-square tests"
+      - "anova"
+      - "correlation analysis"
+    keywords:
+      - "statistics"
+      - "statistical"
+      - "test"
+      - "hypothesis"
+      - "significance"
+      - "anova"
+      - "t-test"
+      - "correlation"
+      - "descriptive"
+    required_columns: []
+    output_type: "statistical_report"
+    dependencies: ["exploratory_data_analysis", "data_visualization"]
+    stage: "analysis"
+
+  regression_analysis:
+    name: "Regression Analysis"
+    description: "Performs linear and non-linear regression analysis to understand relationships between variables and make predictions"
+    specialties:
+      - "linear regression"
+      - "multiple regression"
+      - "logistic regression"
+      - "polynomial regression"
+      - "feature importance"
+      - "model validation"
+    keywords:
+      - "regression"
+      - "linear"
+      - "multiple"
+      - "logistic"
+      - "polynomial"
+      - "prediction"
+      - "relationship"
+      - "coefficient"
+      - "r-squared"
+    required_columns: []
+    output_type: "regression_model"
+    dependencies: ["statistical_analysis", "exploratory_data_analysis"]
+    stage: "analysis"
+
   predictive_modeling:
     name: "Advanced Predictive Modeling"
     description: "Custom machine learning models for business prediction tasks including classification, regression, and ensemble methods"
@@ -543,6 +648,30 @@ agents:
 # ========================================
 # TIME SERIES & FORECASTING
 # ========================================
+
+  time_series_analysis:
+    name: "Time Series Analysis"
+    description: "Analyzes time-based data patterns, trends, seasonality, and temporal relationships in datasets"
+    specialties:
+      - "trend analysis"
+      - "seasonality detection"
+      - "temporal patterns"
+      - "time-based forecasting"
+      - "autocorrelation analysis"
+      - "stationarity testing"
+    keywords:
+      - "time series"
+      - "temporal"
+      - "trend"
+      - "seasonal"
+      - "forecast"
+      - "time-based"
+      - "chronological"
+      - "periodic"
+      - "autocorrelation"
+    required_columns:
+      - "date"
+    output_type: "time_series_report"
 
   time_series_forecasting:
     name: "Time Series Forecasting"
@@ -723,6 +852,6 @@ agent_selection:
   
 # Claude API configuration
 claude_api:
-  model: "claude-3-haiku-20240307"  # Using Haiku for faster responses
+  model: "claude-haiku-4-5-20251001"  # Using Haiku for faster responses
   max_tokens: 4000
   temperature: 0.1  # Low temperature for more consistent code generation

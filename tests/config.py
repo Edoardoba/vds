@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+from pathlib import Path
 
 # Handle Pydantic v2 BaseSettings import
 try:
@@ -46,13 +47,13 @@ class Settings(BaseSettings):
     
     if PYDANTIC_V2:
         model_config = ConfigDict(
-            env_file=".env",
+            env_file=str(Path(__file__).parent / ".env"),
             case_sensitive=True,
             extra="ignore"  # Allow extra fields in .env file
         )
     else:
         class Config:
-            env_file = ".env"
+            env_file = str(Path(__file__).parent / ".env")
             case_sensitive = True
             extra = "ignore"
 

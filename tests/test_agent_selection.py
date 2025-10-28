@@ -82,6 +82,10 @@ async def test_agent_selection():
     # Check Claude API configuration
     print(f"🔑 Claude API Key: {'✅ Configured' if settings.ANTHROPIC_API_KEY else '❌ Missing'}")
     print(f"📋 Claude Model: {settings.CLAUDE_MODEL}")
+
+    # Enforce API key requirement for this test
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY is required for this test. Set it in your environment.")
     
     # Generate fake data
     print("\n📊 Generating fake sales dataset...")
@@ -110,6 +114,11 @@ async def test_agent_selection():
         "Analyze cash flow and financial performance"
     ]
     
+
+    test_questions = [
+        "give me 3 cool graphs for the data"
+    ]
+
     for i, question in enumerate(test_questions, 1):
         print(f"\n" + "-" * 60)
         print(f"🔍 Test {i}: \"{question}\"")
@@ -121,15 +130,15 @@ async def test_agent_selection():
             
             print(f"✅ Selected Agents: {selected_agents}")
             
-            # Show agent details
-            print("📝 Agent Details:")
-            for j, agent_name in enumerate(selected_agents, 1):
-                if agent_name in agent_service.agents:
-                    agent = agent_service.agents[agent_name]
-                    print(f"   {j}. {agent.display_name}")
-                    print(f"      └─ {agent.description[:80]}...")
-                else:
-                    print(f"   {j}. {agent_name} (not found)")
+            # # Show agent details
+            # print("📝 Agent Details:")
+            # for j, agent_name in enumerate(selected_agents, 1):
+            #     if agent_name in agent_service.agents:
+            #         agent = agent_service.agents[agent_name]
+            #         print(f"   {j}. {agent.display_name}")
+            #         print(f"      └─ {agent.description[:80]}...")
+            #     else:
+            #         print(f"   {j}. {agent_name} (not found)")
             
             # Show individual agent confidence scores (fallback method)
             print("🎯 Agent Confidence Scores:")
@@ -169,6 +178,10 @@ if __name__ == "__main__":
     print("🔧 Starting VDS Agent Selection Test...")
     
     try:
+        # Fail fast if API key is missing
+        if not settings.ANTHROPIC_API_KEY:
+            raise RuntimeError("ANTHROPIC_API_KEY is required for this test. Set it in your environment.")
+        
         # Show sample data first
         df = generate_fake_sales_data(500)
         show_sample_data(df)
