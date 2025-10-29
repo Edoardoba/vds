@@ -145,39 +145,39 @@ export default function AnalysisResults() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      {/* Navigation */}
-      <nav className="relative z-10 px-6 py-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/50">
+      {/* Navigation - Enhanced */}
+      <nav className="relative z-10 px-6 py-4 border-b border-gray-200/50 bg-white/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-3"
           >
             <motion.button
-              whileHover={{ scale: 1.05 }}
+              whileHover={{ scale: 1.05, x: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => navigate('/')}
-              className="p-3 text-gray-600 hover:bg-white/50 rounded-xl transition-all duration-200 mr-2"
+              className="p-2.5 text-gray-600 hover:bg-gradient-to-r hover:from-indigo-100 hover:to-purple-100 rounded-xl transition-all duration-200 group"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-5 h-5 group-hover:text-indigo-600 transition-colors" />
             </motion.button>
             
-            <div className="w-8 h-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
               <Brain className="w-5 h-5 text-white" />
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
               Banta
             </span>
           </motion.div>
           
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-100 to-teal-100 rounded-full text-emerald-700 text-sm font-medium"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full text-white text-sm font-bold shadow-lg shadow-emerald-200"
           >
-            <CheckCircle className="w-4 h-4" />
-            Analysis Complete
+            <CheckCircle className="w-5 h-5" />
+            <span>Analysis Complete</span>
           </motion.div>
         </div>
       </nav>
@@ -185,51 +185,52 @@ export default function AnalysisResults() {
       <div className="px-6 pt-8 pb-12">
         <div className="max-w-7xl mx-auto">
           
-          {/* Success Header */}
+          {/* Success Header - Redesigned */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="max-w-4xl mx-auto mb-12"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-5xl mx-auto mb-10"
           >
-            <div className="bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500 rounded-2xl shadow-2xl overflow-hidden">
-              <div className="p-8 text-center">
-                <div className="flex items-center justify-center gap-3 text-white mb-4">
-                  <motion.div
-                    animate={{ rotate: [0, 360] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  >
-                    <CheckCircle className="w-12 h-12" />
-                  </motion.div>
-                  <div>
-                    <h1 className="text-3xl font-bold">Analysis Complete!</h1>
-                    <p className="text-emerald-50 text-lg">Banta has analyzed your data with AI-powered agents</p>
-                  </div>
-                </div>
+            <div className="relative bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-3xl shadow-2xl overflow-hidden">
+              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-40" />
+              <div className="relative p-8 sm:p-12 text-center">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                  className="inline-flex items-center justify-center w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl mb-6 border-2 border-white/30 shadow-xl"
+                >
+                  <CheckCircle className="w-12 h-12 text-white" />
+                </motion.div>
+                <h1 className="text-4xl sm:text-5xl font-bold text-white mb-3">Analysis Complete!</h1>
+                <p className="text-white/90 text-lg sm:text-xl font-medium">Your data has been analyzed by AI-powered agents</p>
               </div>
             </div>
           </motion.div>
 
-          {/* Your Question */}
+          {/* Your Question - Enhanced */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="max-w-4xl mx-auto mb-8"
+            className="max-w-5xl mx-auto mb-8"
           >
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-lg p-6">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Brain className="w-6 h-6 text-white" />
+            <div className="bg-white rounded-3xl border border-gray-200/60 shadow-xl overflow-hidden">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center border border-white/30">
+                    <Brain className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="text-base font-bold text-white">Your Question</h3>
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Your Question:</h3>
-                  <p className="text-gray-700 text-lg italic">"{finalUserQuestion}"</p>
-                </div>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-800 text-xl font-medium leading-relaxed">"{finalUserQuestion}"</p>
               </div>
             </div>
           </motion.div>
 
-          {/* Analysis Summary */}
+          {/* Analysis Summary - Redesigned */}
           {finalAnalysisResult.success && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -237,52 +238,67 @@ export default function AnalysisResults() {
               transition={{ delay: 0.3 }}
               className="max-w-6xl mx-auto mb-8"
             >
-              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-purple-50">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Analysis Summary</h2>
-                  <div className="flex items-center gap-6 text-sm text-gray-600">
+              <div className="bg-white rounded-3xl border border-gray-200/60 shadow-xl overflow-hidden">
+                <div className="p-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
+                  <h2 className="text-xl font-bold text-white mb-2">Analysis Summary</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-white/90 text-xs">
                     <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      Completed: {formatTimestamp(finalAnalysisResult.timestamp)}
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{formatTimestamp(finalAnalysisResult.timestamp)}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Brain className="w-4 h-4" />
-                      Agents: {finalAnalysisResult.selected_agents?.length || 0}
+                      <Brain className="w-3.5 h-3.5" />
+                      <span>{finalAnalysisResult.selected_agents?.length || 0} Agents</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Data: {finalAnalysisResult.data_sample?.total_rows?.toLocaleString()} rows
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>{finalAnalysisResult.data_sample?.total_rows?.toLocaleString()} rows</span>
                     </div>
                   </div>
                 </div>
                 
-                <div className="p-6">
+                <div className="p-8">
                   <div className="grid md:grid-cols-3 gap-6">
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-indigo-600 mb-2">
+                    <motion.div
+                      initial={{ scale: 0.9 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.4 }}
+                      className="text-center p-6 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-2xl border-2 border-indigo-200"
+                    >
+                      <div className="text-4xl font-bold text-indigo-700 mb-2">
                         {finalAnalysisResult.selected_agents?.length || 0}
                       </div>
-                      <p className="text-gray-600">AI Agents Used</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-purple-600 mb-2">
+                      <p className="text-indigo-600 font-semibold">AI Agents</p>
+                    </motion.div>
+                    <motion.div
+                      initial={{ scale: 0.9 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.5 }}
+                      className="text-center p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl border-2 border-purple-200"
+                    >
+                      <div className="text-4xl font-bold text-purple-700 mb-2">
                         {finalAnalysisResult.data_sample?.columns?.length || 0}
                       </div>
-                      <p className="text-gray-600">Data Columns</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-pink-600 mb-2">
+                      <p className="text-purple-600 font-semibold">Data Columns</p>
+                    </motion.div>
+                    <motion.div
+                      initial={{ scale: 0.9 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.6 }}
+                      className="text-center p-6 bg-gradient-to-br from-emerald-50 to-teal-100 rounded-2xl border-2 border-emerald-200"
+                    >
+                      <div className="text-4xl font-bold text-emerald-700 mb-2">
                         {Object.values(finalAnalysisResult.agent_results || {}).filter(r => r.execution_result?.success).length || 0}
                       </div>
-                      <p className="text-gray-600">Successful Analyses</p>
-                    </div>
+                      <p className="text-emerald-600 font-semibold">Successful</p>
+                    </motion.div>
                   </div>
                 </div>
               </div>
             </motion.div>
           )}
 
-          {/* Selected Agents */}
+          {/* Selected Agents - Redesigned */}
           {finalAnalysisResult.selected_agents && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -290,10 +306,10 @@ export default function AnalysisResults() {
               transition={{ delay: 0.4 }}
               className="max-w-6xl mx-auto mb-8"
             >
-              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
-                <div className="p-6 border-b border-gray-100">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">Agents Selected by AI</h3>
-                  <p className="text-gray-600">Banta automatically chose these agents based on your data and question</p>
+              <div className="bg-white rounded-3xl border border-gray-200/60 shadow-xl overflow-hidden">
+                <div className="p-4 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600">
+                  <h3 className="text-xl font-bold text-white mb-1">AI-Selected Agents</h3>
+                  <p className="text-white/90 text-xs">Banta automatically chose these agents based on your data and question</p>
                 </div>
                 
                 <div className="p-6">
@@ -308,30 +324,38 @@ export default function AnalysisResults() {
                           key={agentName}
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: 0.5 + index * 0.1 }}
-                          className={`p-4 rounded-xl border-2 ${
+                          transition={{ delay: 0.5 + index * 0.05 }}
+                          className={`group relative p-5 rounded-2xl border-2 transition-all duration-300 ${
                             isSuccess 
-                              ? 'border-green-200 bg-green-50' 
-                              : 'border-red-200 bg-red-50'
+                              ? 'border-green-300 bg-gradient-to-br from-green-50 to-emerald-50 hover:shadow-lg hover:border-green-400' 
+                              : 'border-red-300 bg-gradient-to-br from-red-50 to-pink-50 hover:shadow-lg hover:border-red-400'
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          <div className="flex items-start gap-4">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 ${
                               isSuccess
-                                ? 'bg-green-500 text-white'
-                                : 'bg-red-500 text-white'
+                                ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
+                                : 'bg-gradient-to-br from-red-500 to-pink-600 text-white'
                             }`}>
-                              <IconComponent className="w-5 h-5" />
+                              <IconComponent className="w-6 h-6" />
                             </div>
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-gray-900 capitalize">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-gray-900 capitalize mb-1 text-lg">
                                 {agentName.replace(/_/g, ' ')}
                               </h4>
-                              <p className={`text-sm ${
-                                isSuccess ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                {isSuccess ? 'Completed Successfully' : 'Analysis Failed'}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                {isSuccess ? (
+                                  <>
+                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                    <p className="text-sm font-medium text-green-700">Completed</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertCircle className="w-4 h-4 text-red-600" />
+                                    <p className="text-sm font-medium text-red-700">Failed</p>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </motion.div>
@@ -402,79 +426,96 @@ export default function AnalysisResults() {
                   transition={{ delay: 0.5 }}
                   className="max-w-6xl mx-auto mb-8"
                 >
-                  <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-pink-50">
+              <div className="bg-white rounded-3xl border border-gray-200/60 shadow-xl overflow-hidden">
+                <div className="p-4 bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl flex items-center justify-center">
-                          <BarChart3 className="w-6 h-6 text-white" />
+                        <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30">
+                          <BarChart3 className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <h3 className="text-2xl font-bold text-gray-900">Data Visualizations</h3>
-                          <p className="text-gray-600">AI-generated charts and analysis insights</p>
+                          <h3 className="text-2xl font-bold text-white">Data Visualizations</h3>
+                          <p className="text-white/90 text-xs">AI-generated charts and analysis insights</p>
                         </div>
                       </div>
                     </div>
                     
-                    <div className="p-6">
+                    <div className="p-8">
                       <div className="grid gap-8">
                         {allVisualizations.map((viz, index) => (
                           <motion.div
                             key={index}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.6 + index * 0.1 }}
-                            className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 p-6 shadow-sm"
+                            className="bg-gradient-to-br from-white to-gray-50 rounded-2xl border-2 border-gray-200 shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
                           >
                             {/* Chart Header */}
-                            <div className="flex items-center justify-between mb-4">
-                              <div>
-                                <h4 className="text-lg font-semibold text-gray-900 capitalize mb-1">
-                                  {viz.agentName}
-                                </h4>
-                                <p className="text-sm text-gray-600">{viz.filename}</p>
+                            <div className="p-6 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-gray-200">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
+                                      <BarChart3 className="w-5 h-5 text-white" />
+                                    </div>
+                                    <div>
+                                      <h4 className="text-xl font-bold text-gray-900 capitalize">
+                                        {viz.agentName}
+                                      </h4>
+                                      <p className="text-sm text-gray-600">{viz.filename}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                                <motion.button
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() => {
+                                    const link = document.createElement('a')
+                                    link.href = `data:image/${viz.type};base64,${viz.content}`
+                                    link.download = viz.filename
+                                    link.click()
+                                  }}
+                                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all font-semibold shadow-lg"
+                                >
+                                  <Download className="w-4 h-4" />
+                                  <span>Download</span>
+                                </motion.button>
                               </div>
-                              <button
-                                onClick={() => {
-                                  const link = document.createElement('a')
-                                  link.href = `data:image/${viz.type};base64,${viz.content}`
-                                  link.download = viz.filename
-                                  link.click()
-                                }}
-                                className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm"
-                              >
-                                <Download className="w-4 h-4" />
-                                Download
-                              </button>
                             </div>
 
                             {/* Chart Image */}
-                            <div className="bg-white rounded-lg p-4 border border-gray-100 mb-4">
-                              <img
-                                src={`data:image/${viz.type};base64,${viz.content}`}
-                                alt={viz.filename}
-                                className="w-full max-w-5xl mx-auto rounded-lg shadow-sm"
-                                style={{ maxHeight: '500px', objectFit: 'contain' }}
-                              />
+                            <div className="p-6 bg-white">
+                              <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border-2 border-gray-100 shadow-inner">
+                                <img
+                                  src={`data:image/${viz.type};base64,${viz.content}`}
+                                  alt={viz.filename}
+                                  className="w-full max-w-full mx-auto rounded-lg shadow-lg"
+                                  style={{ maxHeight: '600px', objectFit: 'contain' }}
+                                />
+                              </div>
                             </div>
 
                             {/* Chart Explanation */}
                             {viz.agentInsights && (
-                              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                                <h5 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-                                  <Eye className="w-4 h-4" />
-                                  Chart Insights & Explanation
-                                </h5>
-                                <div className="text-blue-800 prose prose-blue max-w-none">
-                                  <ReactMarkdown
-                                    components={{
-                                      p: ({children}) => <p className="text-blue-800 mb-2 leading-relaxed">{children}</p>,
-                                      ul: ({children}) => <ul className="list-disc list-inside text-blue-800 mb-2 space-y-1">{children}</ul>,
-                                      li: ({children}) => <li className="text-blue-800 text-sm">{children}</li>,
-                                      strong: ({children}) => <strong className="font-semibold text-blue-900">{children}</strong>
-                                    }}
-                                  >
-                                    {viz.agentInsights}
-                                  </ReactMarkdown>
+                              <div className="p-6 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-t border-gray-200">
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                                    <Eye className="w-5 h-5 text-white" />
+                                  </div>
+                                  <h5 className="text-lg font-bold text-gray-900">Chart Insights & Explanation</h5>
+                                </div>
+                                <div className="bg-white/80 backdrop-blur-sm rounded-xl p-5 border border-blue-200/50 shadow-sm">
+                                  <div className="text-gray-800 prose prose-sm max-w-none">
+                                    <ReactMarkdown
+                                      components={{
+                                        p: ({children}) => <p className="text-gray-800 mb-3 leading-relaxed text-base">{children}</p>,
+                                        ul: ({children}) => <ul className="list-disc list-inside text-gray-800 mb-3 space-y-2 ml-4">{children}</ul>,
+                                        li: ({children}) => <li className="text-gray-800 text-base leading-relaxed">{children}</li>,
+                                        strong: ({children}) => <strong className="font-bold text-gray-900">{children}</strong>
+                                      }}
+                                    >
+                                      {viz.agentInsights}
+                                    </ReactMarkdown>
+                                  </div>
                                 </div>
                               </div>
                             )}
@@ -691,7 +732,7 @@ export default function AnalysisResults() {
             </motion.div>
           )}
 
-          {/* Final Report */}
+          {/* Final Report - Redesigned */}
           {finalAnalysisResult.report && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -699,34 +740,34 @@ export default function AnalysisResults() {
               transition={{ delay: 0.8 }}
               className="max-w-6xl mx-auto mb-8"
             >
-              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-teal-50">
+              <div className="bg-white rounded-3xl border border-gray-200/60 shadow-xl overflow-hidden">
+                <div className="p-4 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-white" />
+                    <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30">
+                      <FileText className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-bold text-gray-900">Executive Report</h3>
-                      <p className="text-gray-600">AI-generated comprehensive analysis summary</p>
+                      <h3 className="text-2xl font-bold text-white">Executive Report</h3>
+                      <p className="text-white/90 text-xs">AI-generated comprehensive analysis summary</p>
                     </div>
                   </div>
                 </div>
                 
-                <div className="p-6">
-                  <div className="prose prose-gray prose-lg max-w-none text-gray-800 leading-relaxed">
+                <div className="p-8 sm:p-10 bg-gradient-to-br from-gray-50 to-white">
+                  <div className="prose prose-lg max-w-none text-gray-800 leading-relaxed">
                     <ReactMarkdown
                       components={{
-                        h1: ({children}) => <h1 className="text-3xl font-bold text-gray-900 mb-4">{children}</h1>,
-                        h2: ({children}) => <h2 className="text-2xl font-semibold text-gray-800 mb-3 mt-6">{children}</h2>,
-                        h3: ({children}) => <h3 className="text-xl font-semibold text-gray-800 mb-2 mt-4">{children}</h3>,
-                        p: ({children}) => <p className="text-gray-700 mb-4 leading-relaxed">{children}</p>,
-                        ul: ({children}) => <ul className="list-disc list-inside text-gray-700 mb-4 space-y-2">{children}</ul>,
-                        ol: ({children}) => <ol className="list-decimal list-inside text-gray-700 mb-4 space-y-2">{children}</ol>,
-                        li: ({children}) => <li className="text-gray-700">{children}</li>,
-                        code: ({children}) => <code className="bg-gray-100 text-gray-800 px-2 py-1 rounded text-sm font-mono">{children}</code>,
-                        pre: ({children}) => <pre className="bg-gray-100 text-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono mb-4">{children}</pre>,
-                        blockquote: ({children}) => <blockquote className="border-l-4 border-indigo-500 pl-4 italic text-gray-600 mb-4">{children}</blockquote>,
-                        strong: ({children}) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                        h1: ({children}) => <h1 className="text-3xl font-bold text-gray-900 mb-6 mt-8 pb-3 border-b-2 border-indigo-200">{children}</h1>,
+                        h2: ({children}) => <h2 className="text-2xl font-bold text-gray-800 mb-4 mt-8 pb-2 border-b border-gray-200">{children}</h2>,
+                        h3: ({children}) => <h3 className="text-xl font-semibold text-gray-800 mb-3 mt-6">{children}</h3>,
+                        p: ({children}) => <p className="text-gray-700 mb-5 leading-relaxed text-lg">{children}</p>,
+                        ul: ({children}) => <ul className="list-disc list-inside text-gray-700 mb-5 space-y-2 text-lg ml-4">{children}</ul>,
+                        ol: ({children}) => <ol className="list-decimal list-inside text-gray-700 mb-5 space-y-2 text-lg ml-4">{children}</ol>,
+                        li: ({children}) => <li className="text-gray-700 leading-relaxed">{children}</li>,
+                        code: ({children}) => <code className="bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-lg text-sm font-mono border border-indigo-200">{children}</code>,
+                        pre: ({children}) => <pre className="bg-gray-900 text-green-400 p-5 rounded-xl overflow-x-auto text-sm font-mono mb-6 border border-gray-700 shadow-lg">{children}</pre>,
+                        blockquote: ({children}) => <blockquote className="border-l-4 border-indigo-500 pl-6 italic text-gray-700 mb-6 bg-indigo-50/50 py-3 rounded-r-lg">{children}</blockquote>,
+                        strong: ({children}) => <strong className="font-bold text-gray-900">{children}</strong>,
                         em: ({children}) => <em className="italic text-gray-700">{children}</em>
                       }}
                     >
@@ -735,18 +776,25 @@ export default function AnalysisResults() {
                   </div>
                   
                   {finalAnalysisResult.report.summary && (
-                    <div className="mt-6 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                      <h4 className="font-semibold text-emerald-900 mb-2">Key Summary:</h4>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-8 p-6 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-2xl border-2 border-emerald-200 shadow-lg"
+                    >
+                      <div className="flex items-center gap-3 mb-4">
+                        <Sparkles className="w-6 h-6 text-emerald-600" />
+                        <h4 className="text-xl font-bold text-emerald-900">Key Takeaways</h4>
+                      </div>
                       {Array.isArray(finalAnalysisResult.report.summary) ? (
-                        <ul className="list-disc list-inside text-emerald-800 space-y-1">
+                        <ul className="list-disc list-inside text-emerald-800 space-y-2 text-lg ml-2">
                           {finalAnalysisResult.report.summary.map((item, index) => (
-                            <li key={index}>{item}</li>
+                            <li key={index} className="leading-relaxed">{item}</li>
                           ))}
                         </ul>
                       ) : (
-                        <p className="text-emerald-800">{finalAnalysisResult.report.summary}</p>
+                        <p className="text-emerald-800 text-lg leading-relaxed">{finalAnalysisResult.report.summary}</p>
                       )}
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               </div>

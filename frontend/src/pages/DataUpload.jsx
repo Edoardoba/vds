@@ -999,161 +999,279 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
         </div>
       )}
       
-      {/* Plan Modal */}
+      {/* Plan Modal - Redesigned */}
       <AnimatePresence>
         {showPlanModal && (
           <motion.div 
-            className="fixed inset-0 z-50 flex items-center justify-center"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="absolute inset-0 bg-black/40" onClick={() => !isAnalyzing && !isPlanning && setShowPlanModal(false)} />
+            {/* Backdrop with blur */}
+            <motion.div 
+              className="absolute inset-0 bg-gradient-to-br from-indigo-900/20 via-purple-900/20 to-pink-900/20 backdrop-blur-sm"
+              onClick={() => !isAnalyzing && !isPlanning && setShowPlanModal(false)}
+            />
+            
+            {/* Modal Container */}
             <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="relative z-10 w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative z-10 w-full max-w-3xl bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
-                    <Brain className="w-5 h-5 text-white" />
+              {/* Header with gradient - Smaller */}
+              <div className="relative p-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
+                <div className="relative flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <motion.div
+                      animate={isPlanning ? { rotate: [0, 360] } : {}}
+                      transition={{ duration: 2, repeat: isPlanning ? Infinity : 0, ease: "linear" }}
+                      className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30 shadow-lg"
+                    >
+                      <Brain className="w-5 h-5 text-white" />
+                    </motion.div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">
+                        {isPlanning ? 'Analyzing Request...' : 'AI Agent Selection'}
+                      </h3>
+                      <p className="text-white/90 text-xs">
+                        {isPlanning 
+                          ? 'Selecting the best agents for your analysis' 
+                          : `${selectedAgentNames.length} selected`
+                        }
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">
-                      {isPlanning ? 'Analyzing Request...' : 'Planned Agents'}
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                      {isPlanning 
-                        ? 'Understanding which agents are needed for your analysis' 
-                        : 'Review and deselect any you don\'t need'
-                      }
-                    </p>
-                  </div>
+                  {!isPlanning && (
+                    <button
+                      onClick={() => setShowPlanModal(false)}
+                      className="p-1.5 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-all"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                {!isPlanning && (
-                  <span className="text-sm text-gray-500">Review and deselect any you don't need</span>
-                )}
               </div>
-              <div className="p-6 max-h-[60vh] overflow-y-auto">
+
+              {/* Content Area */}
+              <div className="p-4">
                 {isPlanning ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-gray-600">
-                    <div className="relative">
-                      <div className="w-16 h-16 border-4 border-gray-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <motion.div
-                          animate={{ 
-                            scale: [1, 1.1, 1],
-                            opacity: [0.7, 1, 0.7]
-                          }}
-                          transition={{ 
-                            duration: 2,
-                            repeat: Infinity,
-                            ease: "easeInOut"
-                          }}
-                        >
-                          <Brain className="w-6 h-6 text-indigo-600" />
-                        </motion.div>
-                      </div>
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <div className="relative mb-4">
+                      {/* Outer spinning ring */}
+                      <motion.div
+                        className="w-20 h-20 border-4 border-indigo-200 border-t-indigo-600 rounded-full"
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                      />
+                      {/* Inner pulsing brain */}
+                      <motion.div
+                        className="absolute inset-0 flex items-center justify-center"
+                        animate={{ 
+                          scale: [1, 1.15, 1],
+                          opacity: [0.8, 1, 0.8]
+                        }}
+                        transition={{ 
+                          duration: 1.5,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                      >
+                        <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-xl">
+                          <Brain className="w-7 h-7 text-white" />
+                        </div>
+                      </motion.div>
                     </div>
-                    <div className="mt-4 text-center">
-                      <p className="text-lg font-semibold text-gray-800">Analyzing Your Request</p>
-                      <p className="text-sm text-gray-600 mt-1">Understanding which agents are needed for your analysis...</p>
-                    </div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-center space-y-2"
+                    >
+                      <p className="text-lg font-bold text-gray-900">Analyzing Your Request</p>
+                      <p className="text-sm text-gray-600">Selecting the most relevant AI agents...</p>
+                    </motion.div>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {plannedAgents.map((agent) => (
-                      <label key={agent.name} className="flex items-start gap-3 p-4 border border-gray-200 rounded-xl hover:border-indigo-200 transition-colors">
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                          checked={selectedAgentNames.includes(agent.name)}
-                          onChange={() => toggleAgentSelection(agent.name)}
-                        />
-                        <div>
-                          <div className="font-semibold text-gray-900">{agent.display_name || agent.name}</div>
-                          {agent.description && (
-                            <div className="text-sm text-gray-600">{agent.description}</div>
-                          )}
+                    {/* Quick Stats Bar - Smaller */}
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
+                        <div className="text-xl font-bold text-indigo-700">{plannedAgents.length}</div>
+                        <div className="text-xs text-indigo-600 font-medium">Total</div>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                        <div className="text-xl font-bold text-green-700">{selectedAgentNames.length}</div>
+                        <div className="text-xs text-green-600 font-medium">Selected</div>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                        <div className="text-xl font-bold text-purple-700">
+                          {plannedAgents.length - selectedAgentNames.length}
                         </div>
-                      </label>
-                    ))}
+                        <div className="text-xs text-purple-600 font-medium">Deselected</div>
+                      </div>
+                    </div>
+
+                    {/* Agent Cards - Grid Layout with max 3 columns */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[calc(100vh-350px)] overflow-y-auto">
+                      {plannedAgents.map((agent, index) => {
+                        const isSelected = selectedAgentNames.includes(agent.name)
+                        const IconComponent = agent.name.includes('visualization') ? BarChart3 :
+                                          agent.name.includes('statistical') ? TrendingUp :
+                                          agent.name.includes('quality') ? CheckCircle :
+                                          agent.name.includes('churn') ? TrendingUp :
+                                          agent.name.includes('customer') ? Star :
+                                          agent.name.includes('sales') ? Zap :
+                                          Brain
+                        
+                        return (
+                          <motion.label
+                            key={agent.name}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: index * 0.03 }}
+                            className={`group relative flex flex-col p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
+                              isSelected
+                                ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-400 shadow-md'
+                                : 'bg-white border-gray-200 hover:border-indigo-300 hover:shadow-sm'
+                            }`}
+                          >
+                            {/* Top Row: Checkbox and Icon */}
+                            <div className="flex items-center justify-between mb-2">
+                              {/* Custom Checkbox */}
+                              <div className="relative">
+                                <input
+                                  type="checkbox"
+                                  className="sr-only"
+                                  checked={isSelected}
+                                  onChange={() => toggleAgentSelection(agent.name)}
+                                />
+                                <motion.div
+                                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                    isSelected
+                                      ? 'bg-gradient-to-br from-indigo-600 to-purple-600 border-indigo-600'
+                                      : 'bg-white border-gray-300 group-hover:border-indigo-400'
+                                  }`}
+                                  whileTap={{ scale: 0.9 }}
+                                >
+                                  {isSelected && (
+                                    <CheckCircle className="w-3.5 h-3.5 text-white" />
+                                  )}
+                                </motion.div>
+                              </div>
+
+                              {/* Icon */}
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                isSelected
+                                  ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md'
+                                  : 'bg-gray-100 text-gray-600 group-hover:bg-indigo-100 group-hover:text-indigo-600'
+                              } transition-all`}>
+                                <IconComponent className="w-5 h-5" />
+                              </div>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-gray-900 text-sm mb-1 line-clamp-1">
+                                {agent.display_name || agent.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </h4>
+                              {agent.description && (
+                                <p className="text-xs text-gray-600 line-clamp-2 leading-snug">
+                                  {agent.description}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Selected Indicator */}
+                            {isSelected && (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="mt-2 flex items-center gap-1 text-xs text-green-700 font-medium"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                <span>Selected</span>
+                              </motion.div>
+                            )}
+                          </motion.label>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
-              <div className="p-6 border-t border-gray-100 flex items-center justify-between">
-                <button
+
+              {/* Footer with Actions */}
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-4">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => setShowPlanModal(false)}
-                  className="px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-3 rounded-xl text-gray-700 font-semibold hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all border border-gray-300 bg-white"
                   disabled={isAnalyzing || isPlanning}
                 >
                   Cancel
-                </button>
-                <motion.button
-                  whileHover={{ scale: isAnalyzing ? 1 : 1.03 }}
-                  whileTap={{ scale: isAnalyzing ? 1 : 0.97 }}
-                  onClick={confirmRunWithSelection}
-                  disabled={isAnalyzing || isPlanning || selectedAgentNames.length === 0}
-                  className={`px-6 py-3 text-white rounded-xl font-semibold disabled:cursor-not-allowed flex items-center gap-2 relative overflow-hidden transition-all duration-200 ${
-                    isAnalyzing 
-                      ? 'bg-gradient-to-r from-indigo-500 to-purple-500' 
-                      : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
-                  }`}
-                >
-                  {/* Animated background gradient */}
-                  {isAnalyzing && (
-                    <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500"
-                      animate={{
-                        backgroundPosition: ['0% 50%', '100% 50%', '0% 50%']
-                      }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                      }}
-                      style={{
-                        backgroundSize: '200% 200%'
-                      }}
-                    />
+                </motion.button>
+                
+                <div className="flex items-center gap-3 flex-1 justify-end">
+                  {!isPlanning && (
+                    <div className="text-sm text-gray-600 hidden sm:block">
+                      <span className="font-semibold text-indigo-600">{selectedAgentNames.length}</span> of {plannedAgents.length} agents selected
+                    </div>
                   )}
                   
-                  {/* Content */}
-                  <div className="relative z-10 flex items-center gap-2">
-                    {isAnalyzing ? (
-                      <>
-                        {/* Sexy spinner */}
-                        <div className="relative">
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                            className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                          />
-                          <motion.div
-                            animate={{ rotate: -360 }}
-                            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                            className="absolute inset-0 w-4 h-4 border-2 border-transparent border-r-white/50 rounded-full"
-                          />
-                        </div>
-                        
-                        {/* Animated text */}
-                        <motion.span
-                          animate={{ opacity: [0.7, 1, 0.7] }}
-                          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                        >
-                          Analyzing...
-                        </motion.span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        Run Analysis
-                      </>
+                  <motion.button
+                    whileHover={{ scale: isAnalyzing ? 1 : 1.02 }}
+                    whileTap={{ scale: isAnalyzing ? 1 : 0.98 }}
+                    onClick={confirmRunWithSelection}
+                    disabled={isAnalyzing || isPlanning || selectedAgentNames.length === 0}
+                    className={`relative px-8 py-3 text-white rounded-xl font-bold disabled:cursor-not-allowed flex items-center gap-3 overflow-hidden transition-all duration-200 shadow-lg ${
+                      selectedAgentNames.length === 0
+                        ? 'bg-gray-300 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700'
+                    }`}
+                  >
+                    {/* Animated gradient background */}
+                    {isAnalyzing && (
+                      <motion.div
+                        className="absolute inset-0 bg-gradient-to-r from-indigo-400 via-purple-500 via-pink-500 to-indigo-400"
+                        animate={{
+                          backgroundPosition: ['0% 50%', '100% 50%', '0% 50%']
+                        }}
+                        transition={{
+                          duration: 3,
+                          repeat: Infinity,
+                          ease: "linear"
+                        }}
+                        style={{
+                          backgroundSize: '200% 200%'
+                        }}
+                      />
                     )}
-                  </div>
-                </motion.button>
+                    
+                    <div className="relative z-10 flex items-center gap-3">
+                      {isAnalyzing ? (
+                        <>
+                          <div className="relative">
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                              className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                            />
+                          </div>
+                          <span>Analyzing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-5 h-5" />
+                          <span>Start Analysis</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </div>
+                  </motion.button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

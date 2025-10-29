@@ -165,10 +165,12 @@ const AgentResultsTabs = ({
           }
         }
 
-        // Update completed agents
+        // Update completed agents (deduplicate)
         if (analysisProgress.completedAgents) {
+          const seenAgents = new Set()
           analysisProgress.completedAgents.forEach(agentResult => {
-            if (agentResult.agent_name) {
+            if (agentResult.agent_name && !seenAgents.has(agentResult.agent_name)) {
+              seenAgents.add(agentResult.agent_name)
               updated[agentResult.agent_name] = {
                 ...updated[agentResult.agent_name],
                 status: agentResult.success !== false ? 'completed' : 'error',
@@ -287,22 +289,6 @@ const AgentResultsTabs = ({
     if (status === 'completed' && result) {
       return (
         <div className="p-6 space-y-4">
-          {/* Agent Summary */}
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <span className="font-semibold text-green-800">Analysis Complete</span>
-            </div>
-            <p className="text-sm text-green-700">{(() => {
-              try {
-                return getAgentDescription(agentName) || 'AI analysis agent'
-              } catch (error) {
-                console.error('Error getting agent description:', error)
-                return 'AI analysis agent'
-              }
-            })()}</p>
-          </div>
-
           {/* Results */}
           {result.execution_result?.success && (
             <div className="space-y-4">
@@ -381,7 +367,7 @@ const AgentResultsTabs = ({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-6xl max-h-[calc(100vh-2rem)] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-6xl h-[calc(100vh-2rem)] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col relative"
       >
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 flex-shrink-0">
@@ -407,9 +393,9 @@ const AgentResultsTabs = ({
           </div>
         </div>
 
-        {/* Workflow Visualization */}
+        {/* Workflow Visualization - Horizontal chart with all agents and flow */}
         {analysisProgress && (
-          <div className="border-b border-gray-200">
+          <div className="border-b border-gray-200 flex-shrink-0">
             <WorkflowVisualization 
               analysisProgress={analysisProgress}
               selectedAgents={selectedAgents}
@@ -419,19 +405,19 @@ const AgentResultsTabs = ({
         )}
 
         {/* Tabs */}
-        <div className="border-b border-gray-200 bg-white">
+        <div className="border-b border-gray-200 bg-white flex-shrink-0">
           <div className="flex items-center">
             {/* Previous Arrow */}
             <button
               onClick={goToPreviousTab}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               disabled={selectedAgents.length <= 1}
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
 
-            {/* Tab List */}
-            <div className="flex overflow-x-auto flex-1">
+            {/* Tab List - Scrollable */}
+            <div className="flex overflow-x-auto flex-1 scrollbar-hide">
               {selectedAgents.map((agentName, index) => {
                 const status = agentStatuses[agentName]?.status || 'pending'
                 return (
@@ -439,7 +425,7 @@ const AgentResultsTabs = ({
                     key={agentName}
                     onClick={() => setActiveTab(index)}
                     className={clsx(
-                      'flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap border-b-2 transition-colors',
+                      'flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0',
                       activeTab === index
                         ? 'border-indigo-500 text-indigo-600 bg-indigo-50'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
@@ -447,7 +433,7 @@ const AgentResultsTabs = ({
                   >
                     {getStatusIcon(status)}
                     {getAgentIcon(agentName)}
-                    <span>{agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                    <span className="max-w-[120px] truncate">{agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
                     <span className="text-xs text-gray-400">({index + 1}/{selectedAgents.length})</span>
                   </button>
                 )
@@ -457,7 +443,7 @@ const AgentResultsTabs = ({
             {/* Next Arrow */}
             <button
               onClick={goToNextTab}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               disabled={selectedAgents.length <= 1}
             >
               <ChevronRight className="w-5 h-5" />
@@ -465,8 +451,8 @@ const AgentResultsTabs = ({
           </div>
         </div>
 
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        {/* Tab Content - Scrollable, with padding bottom for footer */}
+        <div className="flex-1 overflow-y-auto min-h-0 pb-24">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -481,9 +467,9 @@ const AgentResultsTabs = ({
           </AnimatePresence>
         </div>
 
-        {/* Footer - Always visible at bottom */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-          <div className="flex items-center justify-between gap-4">
+        {/* Footer - Always visible at bottom, fixed */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-gray-50 shadow-lg z-20">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             {/* Close Button - Left Side */}
             <button
               onClick={onClose}
@@ -494,7 +480,7 @@ const AgentResultsTabs = ({
             </button>
             
             {/* Status and View Full Results Button - Right Side */}
-            <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="flex items-center gap-4 flex-shrink-0 min-w-0">
               {/* Status Indicator */}
               <div className="text-sm text-gray-600 hidden sm:flex items-center gap-2">
                 {isAnalyzing ? (
@@ -519,9 +505,13 @@ const AgentResultsTabs = ({
                   
                   // Convert completedAgents array to agent_results object
                   const agentResultsObj = {}
+                  const seenAgents = new Set() // Track seen agents to prevent duplicates
+                  
                   if (analysisProgress.completedAgents && Array.isArray(analysisProgress.completedAgents)) {
                     analysisProgress.completedAgents.forEach(agentResult => {
-                      if (agentResult.agent_name) {
+                      if (agentResult.agent_name && !seenAgents.has(agentResult.agent_name)) {
+                        seenAgents.add(agentResult.agent_name)
+                        
                         // Determine if agent succeeded
                         const isSuccess = agentResult.success !== false && 
                                          (!agentResult.execution_result || agentResult.execution_result.success !== false)
@@ -551,13 +541,21 @@ const AgentResultsTabs = ({
                   if (analysisProgress.finalReport?.agent_results && 
                       Object.keys(analysisProgress.finalReport.agent_results).length > 0) {
                     // Merge with finalReport's agent_results (prefer finalReport's data)
-                    Object.assign(agentResultsObj, analysisProgress.finalReport.agent_results)
+                    Object.keys(analysisProgress.finalReport.agent_results).forEach(agentName => {
+                      if (!seenAgents.has(agentName)) {
+                        agentResultsObj[agentName] = analysisProgress.finalReport.agent_results[agentName]
+                        seenAgents.add(agentName)
+                      }
+                    })
                   }
+                  
+                  // Remove duplicates from selected_agents array
+                  const uniqueSelectedAgents = [...new Set(selectedAgents || analysisProgress.finalReport?.agents_executed || [])]
                   
                   // Prepare the data structure for the results page
                   const wrapped = {
                     report: analysisProgress.finalReport,
-                    selected_agents: selectedAgents || analysisProgress.finalReport?.agents_executed || [],
+                    selected_agents: uniqueSelectedAgents,
                     agent_results: agentResultsObj,
                     success: analysisProgress.success ?? true,
                     timestamp: analysisProgress.finalReport?.timestamp || new Date().toISOString(),

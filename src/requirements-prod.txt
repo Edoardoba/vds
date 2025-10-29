@@ -1,35 +1,53 @@
-# Production requirements for Render deployment
+# Web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
 
-# Web framework and server
-fastapi==0.115.5
-uvicorn[standard]==0.32.0
-gunicorn==23.0.0
-python-multipart==0.0.9
+# File upload and handling
+python-multipart==0.0.6
 
 # AWS SDK
-boto3==1.35.60
-botocore==1.35.60
+boto3==1.34.0
+botocore==1.34.0
 
-# Configuration & environment
+# Configuration management
 pydantic==2.9.2
-pydantic-settings==2.6.1
+pydantic-settings==2.6.0
 python-decouple==3.8
-python-dotenv==1.0.1
-PyYAML==6.0.2
+
+# File type detection (optional - fallback available)
+# python-magic==0.4.27
+# python-magic-bin==0.4.14  # Windows binary - commented out due to Windows compatibility issues
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Excel and CSV file processing
+pandas==2.2.3
+numpy==1.26.4    # Required by pandas and for NaN handling
+openpyxl==3.1.2  # For .xlsx files
+xlrd==2.0.1      # For .xls files
+
+# Logging and monitoring
 structlog==23.2.0
 
-# Data stack (Python 3.13 compatible)
-numpy==2.1.2
-pandas==2.2.3
-scipy==1.14.1
-scikit-learn==1.5.2
-statsmodels==0.14.4
-openpyxl==3.1.5
-xlrd==2.0.1
+# YAML parsing for agents configuration
+PyYAML==6.0.1
 
-# Visualization
-matplotlib==3.9.2
-seaborn==0.13.2
+# Data science and machine learning libraries for agent execution
+matplotlib==3.8.2
+seaborn==0.13.0
+scipy==1.11.4
+scikit-learn==1.3.2
+statsmodels==0.14.1
 
-# Networking
-httpx==0.27.2
+# LangGraph for multi-agent workflow orchestration
+langgraph==0.2.16
+langchain-core==0.3.15
+langchain-anthropic==0.2.1
+
+# Development dependencies (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+black==23.11.0
+flake8==6.1.0

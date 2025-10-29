@@ -161,6 +161,22 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
     const completedSteps = analysisProgress.completedSteps || []
     const completedAgents = analysisProgress.completedAgents || []
     const currentAgent = analysisProgress.currentAgent
+    const finalReport = analysisProgress.finalReport
+    
+    // Special handling for report generation step
+    if (step.id === 'report_generator') {
+      if (finalReport) {
+        return 'completed'
+      }
+      // Check if all agents are completed and we're at 100% progress
+      if (completedAgents.length > 0 && 
+          selectedAgents && 
+          completedAgents.length === selectedAgents.length &&
+          currentProgress >= 95) {
+        return 'active'
+      }
+      return 'pending'
+    }
     
     // Check if step is completed (either in completedSteps or completedAgents)
     if (completedSteps.includes(step.id) || 
@@ -247,10 +263,10 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
 
   return (
     <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`}>
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-2 border-b border-gray-100">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Analysis Workflow</h3>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
+          <h3 className="text-sm font-semibold text-gray-900">Analysis Workflow</h3>
+          <div className="flex items-center gap-2 text-xs text-gray-600">
             <span>Progress:</span>
             <span className="font-medium text-indigo-600">
               {Math.round(analysisProgress.progress || 0)}%
@@ -259,7 +275,7 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
         </div>
       </div>
       
-      <div className="p-6">
+      <div className="p-3">
         {/* Horizontal Workflow Tree */}
         <div className="relative">
           <div className="flex items-center gap-4 overflow-x-auto pb-4">
@@ -281,7 +297,7 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                     {/* Step Circle */}
                     <motion.div
                       className={`
-                        w-16 h-16 rounded-full border-2 flex items-center justify-center
+                        w-10 h-10 rounded-full border-2 flex items-center justify-center
                         ${statusInfo.bgColor} ${statusInfo.borderColor}
                         transition-all duration-300
                         ${status === 'running' ? 'shadow-lg shadow-blue-200' : ''}
@@ -310,14 +326,14 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                       }
                     >
                       <IconComponent 
-                        className={`w-7 h-7 ${statusInfo.color} ${
+                        className={`w-5 h-5 ${statusInfo.color} ${
                           status === 'running' ? 'animate-spin' : ''
                         }`} 
                       />
                     </motion.div>
                     
-                    {/* Step Label */}
-                    <div className="mt-2 text-center w-24 min-w-[96px]">
+                    {/* Step Label - Only name, no description */}
+                    <div className="mt-1 text-center w-20 min-w-[80px] pb-3">
                       <p className={`text-xs font-medium truncate ${
                         status === 'completed' ? 'text-green-700' :
                         status === 'running' ? 'text-blue-700' :
@@ -326,31 +342,30 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                       }`}>
                         {step.name}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1 leading-tight line-clamp-2">
-                        {step.description}
-                      </p>
                     </div>
                     
-                    {/* Progress Indicator */}
-                    {status === 'running' && (
-                      <motion.div
-                        className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center"
-                        animate={{ scale: [1, 1.2, 1] }}
-                        transition={{ duration: 1, repeat: Infinity }}
-                      >
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                      </motion.div>
-                    )}
-                    
-                    {/* Completion Checkmark */}
+                    {/* Completion Checkmark - Positioned relative to circle, not label */}
                     {status === 'completed' && (
                       <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                        className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center"
+                        className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full flex items-center justify-center z-10"
+                        style={{ transform: 'translate(30%, -30%)' }}
                       >
-                        <CheckCircle className="w-3 h-3 text-white" />
+                        <CheckCircle className="w-2 h-2 text-white" />
+                      </motion.div>
+                    )}
+                    
+                    {/* Progress Indicator */}
+                    {status === 'running' && (
+                      <motion.div
+                        className="absolute top-0 right-0 w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center z-10"
+                        style={{ transform: 'translate(30%, -30%)' }}
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                      >
+                        <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                       </motion.div>
                     )}
                     
@@ -414,31 +429,28 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
           </div>
         </div>
         
-        {/* Current Step Info */}
+        {/* Current Step Info - Compact */}
         {analysisProgress.currentAgent && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200"
+            className="mt-3 p-2 bg-blue-50 rounded-lg border border-blue-200"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
               >
-                <Loader className="w-5 h-5 text-blue-500" />
+                <Loader className="w-3 h-3 text-blue-500" />
               </motion.div>
-              <div className="flex-1">
-                <p className="font-medium text-blue-900">
-                  Currently Running: {analysisProgress.currentAgent.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-blue-900 truncate">
+                  Running: {analysisProgress.currentAgent.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </p>
-                {analysisProgress.message && (
-                  <p className="text-sm text-blue-700 mt-1">{analysisProgress.message}</p>
-                )}
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="flex-1 bg-blue-200 rounded-full h-1.5">
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="flex-1 bg-blue-200 rounded-full h-1">
                     <motion.div
-                      className="bg-blue-500 h-1.5 rounded-full"
+                      className="bg-blue-500 h-1 rounded-full"
                       initial={{ width: 0 }}
                       animate={{ width: `${analysisProgress.progress || 0}%` }}
                       transition={{ duration: 0.5 }}
@@ -453,20 +465,20 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
           </motion.div>
         )}
         
-        {/* Error Display */}
+        {/* Error Display - Compact */}
         {analysisProgress.errors && analysisProgress.errors.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200"
+            className="mt-2 p-2 bg-red-50 rounded-lg border border-red-200"
           >
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500" />
-              <div>
-                <p className="font-medium text-red-900">Analysis Errors:</p>
-                <ul className="text-sm text-red-700 mt-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-3 h-3 text-red-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-red-900">Errors:</p>
+                <ul className="text-xs text-red-700 mt-1 space-y-0.5">
                   {analysisProgress.errors.map((error, index) => (
-                    <li key={index}>• {error}</li>
+                    <li key={index} className="truncate">• {error}</li>
                   ))}
                 </ul>
               </div>
@@ -474,102 +486,6 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
           </motion.div>
         )}
         
-        {/* Individual Agent Results */}
-        {analysisProgress.completedAgents && analysisProgress.completedAgents.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-6"
-          >
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Agent Results</h4>
-            <div className="space-y-3">
-              {analysisProgress.completedAgents.map((agentResult, index) => {
-                const IconComponent = getAgentIcon(agentResult.agent_name)
-                const isSuccess = agentResult.success !== false
-                
-                return (
-                  <motion.div
-                    key={agentResult.agent_name}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`p-4 rounded-lg border ${
-                      isSuccess 
-                        ? 'border-green-200 bg-green-50' 
-                        : 'border-red-200 bg-red-50'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        isSuccess ? 'bg-green-100' : 'bg-red-100'
-                      }`}>
-                        <IconComponent className={`w-5 h-5 ${
-                          isSuccess ? 'text-green-600' : 'text-red-600'
-                        }`} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h5 className="font-medium text-gray-900">
-                            {agentResult.agent_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </h5>
-                          <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            isSuccess 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {isSuccess ? 'Completed' : 'Failed'}
-                          </div>
-                        </div>
-                        
-                        {isSuccess && agentResult.execution_result?.insights && (
-                          <div className="text-sm text-gray-700 mb-2">
-                            <strong>Insights:</strong> {agentResult.execution_result.insights}
-                          </div>
-                        )}
-                        
-                        {!isSuccess && agentResult.error && (
-                          <div className="text-sm text-red-700">
-                            <strong>Error:</strong> {agentResult.error}
-                          </div>
-                        )}
-                        
-                        {isSuccess && agentResult.execution_result?.output_files && (
-                          <div className="text-xs text-gray-600 mt-2">
-                            Generated {agentResult.execution_result.output_files.length} output file(s)
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                )
-              })}
-            </div>
-          </motion.div>
-        )}
-        
-        {/* Completed Steps Summary */}
-        {analysisProgress.completedSteps && analysisProgress.completedSteps.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4"
-          >
-            <div className="flex flex-wrap gap-2">
-              <span className="text-sm text-gray-600">Completed:</span>
-              {analysisProgress.completedSteps.map((step, index) => (
-                <motion.span
-                  key={step}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium"
-                >
-                  {step.replace(/_/g, ' ')}
-                </motion.span>
-              ))}
-            </div>
-          </motion.div>
-        )}
       </div>
     </div>
   )
