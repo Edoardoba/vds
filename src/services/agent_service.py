@@ -103,7 +103,7 @@ class AgentService:
                         agent_instance.keywords = config.get('keywords', agent_instance.keywords)
                         agent_instance.output_type = config.get('output_type', agent_instance.output_type)
                         
-                        logger.info(f"Applied config for agent: {agent_instance.name}")
+                        # logger.info(f"Applied config for agent: {agent_instance.name}")
                     
                     agents[agent_instance.name] = agent_instance
                     logger.info(f"Loaded agent: {agent_instance.name}")

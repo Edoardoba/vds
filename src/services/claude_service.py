@@ -64,7 +64,7 @@ class ClaudeService:
                 return {}
             
             agents_config = config_data.get('agents', {})
-            logger.info(f"Loaded {len(agents_config)} agent configs from {used_path}: {list(agents_config.keys())}")
+            logger.info(f"Loaded {len(agents_config)} agent configs from {used_path}")
             return agents_config
         except Exception as e:
             logger.error(f"Error loading agent configs: {str(e)}")

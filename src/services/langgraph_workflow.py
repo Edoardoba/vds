@@ -566,42 +566,169 @@ class LangGraphMultiAgentWorkflow:
         return specialized_agents[:3]
     
     async def _create_comprehensive_report(self, state: AnalysisState) -> Dict[str, Any]:
-        """Create comprehensive report from all agent results and shared insights"""
+        """Create comprehensive report from all agent results and shared insights using Claude API"""
+        try:
+            from services.claude_service import ClaudeService
+            claude_service = ClaudeService()
+            
+            # Prepare data sample for report generation
+            data_sample = state.get("data_sample", {})
+            
+            # Convert agent_results dict to list format expected by report prompt
+            agent_results = state.get("agent_results", {})
+            agent_results_list = []
+            
+            for agent_name, result in agent_results.items():
+                if "error" not in result:
+                    agent_results_list.append({
+                        "agent_name": agent_name,
+                        "code_result": result.get("code_result", {}),
+                        "execution_result": result.get("execution_result", {}),
+                        "timestamp": result.get("timestamp", datetime.utcnow().isoformat())
+                    })
+            
+            # Create report prompt similar to agent_service
+            report_prompt = self._create_report_prompt(
+                data_sample, 
+                state["user_question"], 
+                state.get("selected_agents", []),
+                agent_results_list
+            )
+            
+            # Use Claude to generate the report
+            report_content = await claude_service._call_claude_api(report_prompt)
+            
+            # Extract key insights and recommendations
+            key_insights = self._extract_key_insights(agent_results_list)
+            recommendations = self._extract_recommendations(agent_results_list)
+            
+            # Create comprehensive report structure
+            report = {
+                "content": report_content,
+                "summary": key_insights[0] if key_insights else f"Analysis completed for {state['filename']}",
+                "recommendations": recommendations,
+                "user_question": state["user_question"],
+                "data_overview": {
+                    "filename": state["filename"],
+                    "total_rows": data_sample.get("total_rows", 0) if isinstance(data_sample, dict) else 0,
+                    "columns": data_sample.get("columns", []) if isinstance(data_sample, dict) else [],
+                    "data_types": data_sample.get("data_types", {}) if isinstance(data_sample, dict) else {}
+                },
+                "agents_executed": state.get("selected_agents", []),
+                "insights": key_insights,
+                "agent_results": agent_results,
+                "errors": state.get("errors", []),
+                "success": state.get("success", False),
+                "generated_at": datetime.utcnow().isoformat(),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            return report
+            
+        except Exception as e:
+            logger.error(f"Error generating comprehensive report: {str(e)}")
+            # Fallback to basic report structure
+            shared_insights = state.get("shared_insights", {})
+            agent_results = state.get("agent_results", {})
+            
+            # Collect basic insights
+            all_insights = []
+            for category, insights in shared_insights.items():
+                if insights:
+                    all_insights.append(f"**{category.title()} Analysis:**\n{insights}")
+            
+            for agent_name, result in agent_results.items():
+                if result.get("success") and result.get("code_result", {}).get("insights"):
+                    all_insights.append(f"**{agent_name.replace('_', ' ').title()}:**\n{result['code_result']['insights']}")
+            
+            return {
+                "content": f"Report generation encountered an error: {str(e)}\n\nBasic insights:\n\n" + "\n\n".join(all_insights),
+                "summary": f"Analysis completed for {state['filename']} (report generation had issues)",
+                "recommendations": ["Review individual agent results for insights", "Consider regenerating the report"],
+                "user_question": state["user_question"],
+                "data_overview": {
+                    "filename": state["filename"],
+                    "shape": shared_insights.get("data_shape", "Unknown"),
+                    "columns": shared_insights.get("columns", []),
+                    "data_types": shared_insights.get("data_types", {})
+                },
+                "agents_executed": list(agent_results.keys()),
+                "insights": all_insights,
+                "agent_results": agent_results,
+                "errors": state.get("errors", []) + [f"Report generation error: {str(e)}"],
+                "success": state.get("success", False),
+                "error": str(e),
+                "generated_at": datetime.utcnow().isoformat(),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    def _create_report_prompt(self, data_sample: Dict[str, Any], user_question: str,
+                            selected_agents: List[str], agent_results: List[Dict[str, Any]]) -> str:
+        """Create prompt for report generation"""
         
-        # Collect all insights
-        all_insights = []
+        # Summarize agent results
+        agent_summaries = []
+        for result in agent_results:
+            if "error" not in result:
+                agent_summaries.append({
+                    "agent": result["agent_name"],
+                    "insights": result.get("code_result", {}).get("insights", ""),
+                    "success": result.get("execution_result", {}).get("success", False),
+                    "execution_output": result.get("execution_result", {}).get("output", "")[:500]  # First 500 chars
+                })
         
-        # Add shared insights
-        shared_insights = state.get("shared_insights", {})
-        for category, insights in shared_insights.items():
-            if insights:
-                all_insights.append(f"**{category.title()} Analysis:**\n{insights}")
+        # Get data overview info
+        file_info = data_sample.get("file_info", {}) if isinstance(data_sample, dict) else {}
+        filename = file_info.get("filename", "unknown") if isinstance(file_info, dict) else "unknown"
+        total_rows = data_sample.get("total_rows", 0) if isinstance(data_sample, dict) else 0
+        columns = data_sample.get("columns", []) if isinstance(data_sample, dict) else []
         
-        # Add individual agent insights
-        agent_results = state.get("agent_results", {})
-        for agent_name, result in agent_results.items():
-            if result.get("success") and result.get("code_result", {}).get("insights"):
-                all_insights.append(f"**{agent_name.replace('_', ' ').title()}:**\n{result['code_result']['insights']}")
+        return f"""
+Generate a comprehensive data analysis report based on the following information:
+
+**Original Question:** "{user_question}"
+
+**Data Overview:**
+- File: {filename}
+- Rows: {total_rows:,}
+- Columns: {len(columns)}
+- Column Names: {', '.join(columns[:10])}{'...' if len(columns) > 10 else ''}
+
+**Analysis Performed:**
+{json.dumps(agent_summaries, indent=2) if agent_summaries else "No successful analyses completed"}
+
+**Please provide a structured report with:**
+1. Executive Summary
+2. Key Findings
+3. Data Quality Assessment  
+4. Insights and Patterns
+5. Recommendations
+6. Next Steps
+
+Focus on answering the user's original question and providing actionable insights.
+"""
+    
+    def _extract_key_insights(self, agent_results: List[Dict[str, Any]]) -> List[str]:
+        """Extract key insights from agent results"""
+        insights = []
         
-        # Create comprehensive report
-        report = {
-            "summary": f"Analysis completed for {state['filename']}",
-            "user_question": state["user_question"],
-            "data_overview": {
-                "filename": state["filename"],
-                "shape": shared_insights.get("data_shape", "Unknown"),
-                "columns": shared_insights.get("columns", []),
-                "data_types": shared_insights.get("data_types", {})
-            },
-            "agents_executed": list(agent_results.keys()),
-            "insights": "\n\n".join(all_insights),
-            "agent_results": agent_results,
-            "errors": state.get("errors", []),
-            "success": state.get("success", False),
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        for result in agent_results:
+            if "error" not in result:
+                agent_insights = result.get("code_result", {}).get("insights", "")
+                if agent_insights:
+                    insights.append(f"[{result['agent_name']}] {agent_insights}")
         
-        return report
+        return insights
+    
+    def _extract_recommendations(self, agent_results: List[Dict[str, Any]]) -> List[str]:
+        """Extract recommendations from agent results"""
+        recommendations = [
+            "Review the detailed analysis results for specific insights",
+            "Consider running additional analyses based on initial findings",
+            "Validate key findings with domain experts"
+        ]
+        
+        return recommendations
     
     # WebSocket progress update methods
     async def _send_progress_update(self, state: AnalysisState, step: str, message: str):
