@@ -77,9 +77,9 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
   // Define the core workflow steps that always happen
   const coreWorkflowSteps = [
     {
-      id: 'data_processor',
+      id: 'data_processing',
       name: 'Data Processing',
-      description: 'Processing uploaded data',
+      description: 'Processing  data',
       icon: Database,
       progress: 10
     }
@@ -92,9 +92,9 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
     
     // Add data processing step
     steps.push({
-      id: 'data_processor',
+      id: 'data_processing',
       name: 'Data Processing',
-      description: 'Processing uploaded data',
+      description: 'Processing  data',
       icon: Database,
       progress: 10
     })
@@ -261,8 +261,8 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
       
       <div className="p-6">
         {/* Horizontal Workflow Tree */}
-        <div className="relative overflow-x-auto">
-          <div className="flex items-center gap-4 min-w-max">
+        <div className="relative">
+          <div className="flex items-center gap-4 overflow-x-auto pb-4">
             {workflowSteps.map((step, index) => {
               const status = getStepStatus(step)
               const statusInfo = getStepStatusInfo(status)
@@ -317,8 +317,8 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                     </motion.div>
                     
                     {/* Step Label */}
-                    <div className="mt-2 text-center max-w-20">
-                      <p className={`text-xs font-medium ${
+                    <div className="mt-2 text-center w-24 min-w-[96px]">
+                      <p className={`text-xs font-medium truncate ${
                         status === 'completed' ? 'text-green-700' :
                         status === 'running' ? 'text-blue-700' :
                         status === 'active' ? 'text-indigo-700' :
@@ -326,7 +326,7 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                       }`}>
                         {step.name}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1 leading-tight">
+                      <p className="text-xs text-gray-500 mt-1 leading-tight line-clamp-2">
                         {step.description}
                       </p>
                     </div>
@@ -544,32 +544,6 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                 )
               })}
             </div>
-          </motion.div>
-        )}
-        
-        {/* Final Report */}
-        {analysisProgress.finalReport && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <FileText className="w-5 h-5 text-green-600" />
-              </div>
-              <h4 className="text-lg font-semibold text-green-900">Final Report Generated</h4>
-            </div>
-            <p className="text-sm text-green-700">
-              Analysis completed successfully! The final report contains comprehensive insights from all agents.
-            </p>
-            {analysisProgress.finalReport.summary && (
-              <div className="mt-3 p-3 bg-white rounded border border-green-200">
-                <p className="text-sm text-gray-700">
-                  <strong>Summary:</strong> {analysisProgress.finalReport.summary}
-                </p>
-              </div>
-            )}
           </motion.div>
         )}
         

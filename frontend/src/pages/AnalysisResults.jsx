@@ -128,8 +128,11 @@ export default function AnalysisResults() {
   }
 
   // Check if analysis results are empty or invalid
-  const hasValidResults = finalAnalysisResult.agent_results && Object.keys(finalAnalysisResult.agent_results).length > 0
-  const hasVisualizations = hasValidResults && Object.values(finalAnalysisResult.agent_results || {}).some(result => 
+  // Consider it valid if either agent_results exist OR a report exists
+  const hasValidResults = (finalAnalysisResult.agent_results && Object.keys(finalAnalysisResult.agent_results).length > 0) || 
+                          (finalAnalysisResult.report && finalAnalysisResult.report.content)
+  const hasVisualizations = finalAnalysisResult.agent_results && Object.keys(finalAnalysisResult.agent_results).length > 0 && 
+                            Object.values(finalAnalysisResult.agent_results || {}).some(result => 
     result.execution_result?.output_files?.length > 0
   )
 

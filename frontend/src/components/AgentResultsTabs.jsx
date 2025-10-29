@@ -138,6 +138,14 @@ const AgentResultsTabs = ({
     setAgentStatuses(initialStatuses)
   }, [selectedAgents])
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [])
+
   // Update agent statuses based on analysis progress (LangGraph enhanced)
   useEffect(() => {
     if (analysisProgress) {
@@ -359,12 +367,21 @@ const AgentResultsTabs = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => {
+        // Close on backdrop click
+        if (e.target === e.currentTarget) {
+          onClose()
+        }
+      }}
+    >
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="w-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-6xl max-h-[calc(100vh-2rem)] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 flex-shrink-0">
@@ -449,7 +466,7 @@ const AgentResultsTabs = ({
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto min-h-0">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -457,55 +474,124 @@ const AgentResultsTabs = ({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
-              className="h-full overflow-y-auto"
+              className="min-h-full"
             >
               {selectedAgents[activeTab] && renderAgentResult(selectedAgents[activeTab])}
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-sm text-gray-600">
-              {isAnalyzing ? (
-                <span className="flex items-center gap-2">
-                  <Loader className="w-4 h-4 animate-spin text-blue-500" />
-                  Analysis in progress...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  Analysis completed
-                </span>
-              )}
-            </div>
+        {/* Footer - Always visible at bottom */}
+        <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+          <div className="flex items-center justify-between gap-4">
+            {/* Close Button - Left Side */}
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors flex items-center gap-2 flex-shrink-0"
+            >
+              <XCircle className="w-4 h-4" />
+              <span>Close</span>
+            </button>
             
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              {/* Show results button if analysis is complete */}
-              {!isAnalyzing && analysisProgress?.finalReport && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    // Navigate to results page with the final report
+            {/* Status and View Full Results Button - Right Side */}
+            <div className="flex items-center gap-4 flex-shrink-0">
+              {/* Status Indicator */}
+              <div className="text-sm text-gray-600 hidden sm:flex items-center gap-2">
+                {isAnalyzing ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin text-blue-500" />
+                    <span>Analysis in progress...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span>Analysis completed</span>
+                  </>
+                )}
+              </div>
+              
+              {/* View Full Report Button - Right Side, enabled when report is ready */}
+              <motion.button
+                whileHover={analysisProgress?.finalReport ? { scale: 1.02 } : {}}
+                whileTap={analysisProgress?.finalReport ? { scale: 0.98 } : {}}
+                onClick={() => {
+                  if (!analysisProgress?.finalReport) return
+                  
+                  // Convert completedAgents array to agent_results object
+                  const agentResultsObj = {}
+                  if (analysisProgress.completedAgents && Array.isArray(analysisProgress.completedAgents)) {
+                    analysisProgress.completedAgents.forEach(agentResult => {
+                      if (agentResult.agent_name) {
+                        // Determine if agent succeeded
+                        const isSuccess = agentResult.success !== false && 
+                                         (!agentResult.execution_result || agentResult.execution_result.success !== false)
+                        
+                        agentResultsObj[agentResult.agent_name] = {
+                          ...agentResult,
+                          // Ensure proper structure for AnalysisResults page
+                          execution_result: agentResult.execution_result || {
+                            success: isSuccess,
+                            error: agentResult.error || (isSuccess ? null : 'Agent execution failed'),
+                            output: agentResult.execution_result?.output || '',
+                            output_files: agentResult.execution_result?.output_files || []
+                          },
+                          // Ensure success flag is set correctly
+                          success: isSuccess
+                        }
+                        
+                        // If there's an error but no execution_result.error, set it
+                        if (!isSuccess && !agentResult.execution_result?.error && agentResult.error) {
+                          agentResultsObj[agentResult.agent_name].execution_result.error = agentResult.error
+                        }
+                      }
+                    })
+                  }
+                  
+                  // Also check if finalReport contains agent_results
+                  if (analysisProgress.finalReport?.agent_results && 
+                      Object.keys(analysisProgress.finalReport.agent_results).length > 0) {
+                    // Merge with finalReport's agent_results (prefer finalReport's data)
+                    Object.assign(agentResultsObj, analysisProgress.finalReport.agent_results)
+                  }
+                  
+                  // Prepare the data structure for the results page
+                  const wrapped = {
+                    report: analysisProgress.finalReport,
+                    selected_agents: selectedAgents || analysisProgress.finalReport?.agents_executed || [],
+                    agent_results: agentResultsObj,
+                    success: analysisProgress.success ?? true,
+                    timestamp: analysisProgress.finalReport?.timestamp || new Date().toISOString(),
+                    data_sample: analysisProgress.dataSample || analysisProgress.finalReport?.data_overview || {}
+                  }
+                  
+                  // Close the modal first
+                  onClose()
+                  
+                  // Small delay to ensure modal closes before navigation
+                  setTimeout(() => {
                     if (navigate) {
                       navigate('/analysis-results', {
                         state: {
-                          analysisResult: analysisProgress.finalReport,
+                          analysisResult: wrapped,
                           userQuestion: analysisProgress.userQuestion || 'Analysis Question'
                         }
                       })
                     } else {
-                      // Fallback: store data in sessionStorage and navigate
-                      sessionStorage.setItem('analysisResult', JSON.stringify(analysisProgress.finalReport))
+                      sessionStorage.setItem('analysisResult', JSON.stringify(wrapped))
                       sessionStorage.setItem('userQuestion', analysisProgress.userQuestion || 'Analysis Question')
                       window.location.href = '/analysis-results'
                     }
-                  }}
-                  className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 relative overflow-hidden text-sm"
-                >
-                  {/* Animated background gradient */}
+                  }, 100)
+                }}
+                disabled={!analysisProgress?.finalReport}
+                className={`px-6 py-2.5 rounded-lg font-semibold transition-all duration-200 flex items-center gap-2 relative overflow-hidden flex-shrink-0 ${
+                  analysisProgress?.finalReport
+                    ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl cursor-pointer'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                }`}
+                title={analysisProgress?.finalReport ? 'View the complete analysis report' : 'Report is being generated...'}
+              >
+                {analysisProgress?.finalReport && (
                   <motion.div
                     className="absolute inset-0 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500"
                     animate={{
@@ -520,23 +606,25 @@ const AgentResultsTabs = ({
                       backgroundSize: '200% 200%'
                     }}
                   />
-                  
-                  {/* Content */}
-                  <div className="relative z-10 flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">View Full Results</span>
-                    <span className="sm:hidden">View Results</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
-                </motion.button>
-              )}
-              
-              <button
-                onClick={onClose}
-                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition-colors text-sm"
-              >
-                {isAnalyzing ? 'Close' : 'Close'}
-              </button>
+                )}
+                
+                {/* Content */}
+                <div className="relative z-10 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  {analysisProgress?.finalReport ? (
+                    <>
+                      <span className="hidden sm:inline">View Full Report</span>
+                      <span className="sm:hidden">View Report</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  ) : (
+                    <>
+                      <span className="hidden sm:inline">Report Not Ready</span>
+                      <span className="sm:hidden">Not Ready</span>
+                    </>
+                  )}
+                </div>
+              </motion.button>
             </div>
           </div>
         </div>
