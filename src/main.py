@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -8,14 +8,19 @@ from datetime import datetime
 from io import BytesIO
 import json
 import asyncio
+from sqlalchemy.orm import Session
 
 from config import settings
 from services.s3_service import S3Service
 from services.agent_service import AgentService
 from services.langgraph_workflow import LangGraphMultiAgentWorkflow
 from services.langgraph_websocket import LangGraphWebSocketManager
+from services.database_service import DatabaseService
 from utils.validators import validate_data_file
 from utils.data_processor import clean_nan_values
+
+# Import database models and initialization
+from models import init_db, get_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -96,10 +101,22 @@ async def log_requests(request, call_next):
 # Initialize services
 s3_service = S3Service()
 agent_service = AgentService()
+db_service = DatabaseService()
 
 # Initialize LangGraph workflow (will be initialized after WebSocket manager)
 langgraph_workflow = None
 langgraph_websocket_manager = None
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database and services on startup"""
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        # Don't fail startup - database is optional for basic functionality
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -302,38 +319,43 @@ async def list_files(folder: Optional[str] = None):
 async def analyze_data(
     file: UploadFile = File(...),
     question: str = Form(...),
-    selected_agents: Optional[str] = Form(None)
+    selected_agents: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
 ):
     """
     Analyze uploaded data using AI agents based on user question
-    
+    WITH CACHING AND DATABASE TRACKING
+
     Args:
         file: Data file to analyze (CSV, XLSX, or XLS)
         question: User's analysis question/request
-        
+        selected_agents: Optional JSON string of selected agent names
+
     Returns:
         Complete analysis results with agent outputs and report
     """
+    analysis_record = None
+    start_time = datetime.utcnow()
+
     try:
         # Validate inputs
         if not question or question.strip() == "":
             raise ValueError("Analysis question is required")
-        
+
         # Read file content
         await file.seek(0)
         file_content = await file.read()
-        
+
         if not file_content:
             raise ValueError("File is empty")
-        
+
         # Reset file pointer for validation
         await file.seek(0)
-        
+
         # Validate file type
         validation_result = await validate_data_file(file)
         logger.info(f"File validation passed: {file.filename}")
-        
-        # Process analysis request through agent workflow
+
         # Parse optional selected_agents JSON string into list
         selected_agents_list = None
         if selected_agents:
@@ -345,36 +367,123 @@ async def analyze_data(
             except Exception:
                 selected_agents_list = None
 
+        # ========== CACHING LOGIC ==========
+        # Generate cache key from file content and question
+        data_hash = db_service.generate_data_hash(file_content)
+        cache_key = db_service.generate_cache_key(data_hash, question.strip())
+
+        # Check cache first
+        cached_result = db_service.get_cached_analysis(db, cache_key)
+        if cached_result:
+            logger.info(f"✅ CACHE HIT - Returning cached result (saved ~{cached_result.time_saved_ms}ms)")
+            result = cached_result.cached_result
+            result["is_cached"] = True
+            result["cache_info"] = {
+                "cached_at": cached_result.created_at.isoformat(),
+                "cache_hits": cached_result.access_count,
+                "time_saved_ms": cached_result.time_saved_ms
+            }
+
+            # Mark analysis as cached in database
+            if not selected_agents_list:
+                selected_agents_list = result.get("selected_agents", [])
+
+            analysis_record = db_service.create_analysis(
+                db=db,
+                filename=file.filename,
+                user_question=question.strip(),
+                selected_agents=selected_agents_list,
+                cache_key=cache_key
+            )
+            analysis_record.is_cached = True
+            analysis_record.status = "cached"
+            db_service.save_analysis_results(
+                db=db,
+                analysis_id=analysis_record.id,
+                data_sample=result.get("data_sample", {}),
+                agent_results=result.get("agent_results", {}),
+                report=result.get("report", {}),
+                errors=result.get("errors", [])
+            )
+
+            return clean_nan_values(result)
+
+        # ========== NEW ANALYSIS ==========
+        logger.info(f"❌ CACHE MISS - Running new analysis")
+
+        # Create analysis record in database
+        analysis_record = db_service.create_analysis(
+            db=db,
+            filename=file.filename,
+            user_question=question.strip(),
+            selected_agents=selected_agents_list or [],
+            cache_key=cache_key
+        )
+
+        # Update status to running
+        db_service.update_analysis_status(db, analysis_record.id, "running")
+
         # Create progress callback for WebSocket updates
         async def progress_callback(progress_data):
             await manager.send_progress(progress_data)
-        
+
         # Use LangGraph workflow for analysis
         analysis_result = await langgraph_workflow.run_analysis(
             file_content=file_content,
             filename=file.filename,
             user_question=question.strip(),
-            selected_agents=selected_agents_list
+            selected_agents=selected_agents_list,
+            analysis_id=analysis_record.id,  # Pass for tracking
+            db_session=db  # Pass for agent tracking
         )
-        
+
         # Add validation metadata
         analysis_result["file_validation"] = validation_result
-        
+        analysis_result["is_cached"] = False
+        analysis_result["analysis_id"] = analysis_record.id
+
         # Clean any NaN values to ensure JSON serializability
         cleaned_result = clean_nan_values(analysis_result)
-        
-        logger.info(f"Analysis completed for: {file.filename}")
-        
+
+        # Save results to database
+        db_service.save_analysis_results(
+            db=db,
+            analysis_id=analysis_record.id,
+            data_sample=cleaned_result.get("data_sample", {}),
+            agent_results=cleaned_result.get("agent_results", {}),
+            report=cleaned_result.get("report", {}),
+            errors=[]
+        )
+
+        # Save to cache for future use
+        execution_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        db_service.save_to_cache(
+            db=db,
+            cache_key=cache_key,
+            data_hash=data_hash,
+            user_question=question.strip(),
+            analysis_id=analysis_record.id,
+            result=cleaned_result,
+            ttl_hours=24,
+            execution_time_ms=int(execution_time)
+        )
+
+        logger.info(f"✅ Analysis completed for: {file.filename} in {execution_time:.0f}ms")
+
         return cleaned_result
-        
+
     except ValueError as ve:
         logger.error(f"Validation error in analyze_data: {str(ve)}")
+        if analysis_record:
+            db_service.update_analysis_status(db, analysis_record.id, "failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(ve)
         )
     except Exception as e:
         logger.error(f"Analysis failed: {str(e)}")
+        if analysis_record:
+            db_service.update_analysis_status(db, analysis_record.id, "failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
@@ -481,7 +590,7 @@ async def preview_data(
 async def get_available_agents():
     """
     Get list of available analysis agents and their capabilities
-    
+
     Returns:
         List of agents with descriptions and specialties
     """
@@ -496,18 +605,152 @@ async def get_available_agents():
                 "keywords": agent.keywords,
                 "output_type": agent.output_type
             })
-        
+
         return {
             "agents": available_agents,
             "total_count": len(available_agents),
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting available agents: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get available agents: {str(e)}"
+        )
+
+
+# ========== NEW ENDPOINTS FOR HISTORY & ANALYTICS ==========
+
+@app.get("/history/recent")
+async def get_recent_history(limit: int = 10, db: Session = Depends(get_db)):
+    """
+    Get recent analysis history
+
+    Args:
+        limit: Number of recent analyses to return (default 10)
+
+    Returns:
+        List of recent analyses
+    """
+    try:
+        analyses = db_service.get_recent_analyses(db, limit=limit)
+        return {
+            "success": True,
+            "count": len(analyses),
+            "analyses": [a.to_dict() for a in analyses],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting recent history: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get recent history: {str(e)}"
+        )
+
+
+@app.get("/history/{analysis_id}")
+async def get_analysis_by_id(analysis_id: str, db: Session = Depends(get_db)):
+    """
+    Get a specific analysis by ID
+
+    Args:
+        analysis_id: Analysis ID
+
+    Returns:
+        Analysis details
+    """
+    try:
+        analysis = db_service.get_analysis(db, analysis_id)
+        if not analysis:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Analysis {analysis_id} not found"
+            )
+
+        return {
+            "success": True,
+            "analysis": analysis.to_dict(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting analysis {analysis_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get analysis: {str(e)}"
+        )
+
+
+@app.get("/analytics/statistics")
+async def get_analytics_statistics(db: Session = Depends(get_db)):
+    """
+    Get overall analytics and statistics
+
+    Returns:
+        Statistics about analyses, caching, and performance
+    """
+    try:
+        stats = db_service.get_analysis_statistics(db)
+        return {
+            "success": True,
+            "statistics": stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting statistics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get statistics: {str(e)}"
+        )
+
+
+@app.get("/analytics/agent-performance")
+async def get_agent_performance_stats(db: Session = Depends(get_db)):
+    """
+    Get performance statistics for all agents
+
+    Returns:
+        Performance metrics for each agent
+    """
+    try:
+        performance = db_service.get_all_agent_performance(db)
+        return {
+            "success": True,
+            "count": len(performance),
+            "agent_performance": [p.to_dict() for p in performance],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting agent performance: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get agent performance: {str(e)}"
+        )
+
+
+@app.delete("/cache/clear-expired")
+async def clear_expired_cache(db: Session = Depends(get_db)):
+    """
+    Clear all expired cache entries
+
+    Returns:
+        Number of cache entries cleared
+    """
+    try:
+        cleared_count = db_service.clear_expired_cache(db)
+        return {
+            "success": True,
+            "cleared_count": cleared_count,
+            "message": f"Cleared {cleared_count} expired cache entries",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error clearing expired cache: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear expired cache: {str(e)}"
         )
 
 

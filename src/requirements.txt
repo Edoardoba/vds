@@ -33,6 +33,11 @@ structlog==23.2.0
 # YAML parsing for agents configuration
 PyYAML==6.0.1
 
+# Database
+SQLAlchemy==2.0.23
+alembic==1.13.0  # For database migrations
+psycopg2-binary==2.9.9  # PostgreSQL adapter (optional, for PostgreSQL support)
+
 # Data science and machine learning libraries for agent execution
 matplotlib==3.8.2
 seaborn==0.13.0

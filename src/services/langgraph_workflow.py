@@ -148,63 +148,90 @@ class LangGraphMultiAgentWorkflow:
         return state
     
     async def _run_dynamic_agents_node(self, state: AnalysisState) -> AnalysisState:
-        """Run all selected agents dynamically"""
+        """Run all selected agents dynamically with PARALLEL execution"""
         logger.info("Running dynamic agents...")
-        
+
         selected_agents = state.get("selected_agents", [])
         if not selected_agents:
             logger.warning("No agents selected, skipping agent execution")
             return state
-        
-        logger.info(f"Running {len(selected_agents)} agents: {selected_agents}")
-        
+
+        logger.info(f"Running {len(selected_agents)} agents in PARALLEL: {selected_agents}")
+
         # Calculate progress per agent
         progress_per_agent = 60.0 / len(selected_agents)  # Use 60% of total progress for agents
         base_progress = 30.0
-        
+
+        # Send agent started notifications for all agents
+        for agent_name in selected_agents:
+            state["current_agent"] = agent_name
+            await self._send_agent_started(state, agent_name)
+
+        # Execute all agents in parallel using asyncio.gather
+        tasks = []
         for i, agent_name in enumerate(selected_agents):
+            task = self._execute_agent_with_progress(
+                agent_name, state, i, len(selected_agents), base_progress, progress_per_agent
+            )
+            tasks.append(task)
+
+        # Wait for all agents to complete (with exception handling)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results
+        for i, (agent_name, result) in enumerate(zip(selected_agents, results)):
             try:
-                # Update progress
-                current_progress = base_progress + (i * progress_per_agent)
-                state["progress"] = current_progress
-                state["current_agent"] = agent_name
-                
-                await self._send_agent_started(state, agent_name)
-                
-                # Execute the agent
-                result = await self._execute_agent(agent_name, state)
-                state["agent_results"][agent_name] = result
-                state["completed_steps"].append(agent_name)
-                
-                # Update shared insights
-                if result.get("success") and result.get("code_result", {}).get("insights"):
-                    state["shared_insights"][agent_name] = result["code_result"]["insights"]
-                
-                await self._send_agent_completed(state, agent_name, result)
-                
-                logger.info(f"Completed agent {agent_name}: {result.get('success', False)}")
-                
+                if isinstance(result, Exception):
+                    logger.error(f"Agent {agent_name} failed with exception: {result}")
+                    state["errors"].append(f"{agent_name}: {str(result)}")
+
+                    error_result = {
+                        "agent_name": agent_name,
+                        "success": False,
+                        "error": str(result),
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    state["agent_results"][agent_name] = error_result
+                    await self._send_agent_error(state, agent_name, str(result))
+                else:
+                    state["agent_results"][agent_name] = result
+                    state["completed_steps"].append(agent_name)
+
+                    # Update shared insights
+                    if result.get("success") and result.get("code_result", {}).get("insights"):
+                        state["shared_insights"][agent_name] = result["code_result"]["insights"]
+
+                    await self._send_agent_completed(state, agent_name, result)
+                    logger.info(f"Completed agent {agent_name}: {result.get('success', False)}")
+
             except Exception as e:
-                logger.error(f"Agent {agent_name} failed: {e}")
+                logger.error(f"Error processing result for agent {agent_name}: {e}")
                 state["errors"].append(f"{agent_name}: {str(e)}")
-                
-                # Add error result
-                error_result = {
-                    "agent_name": agent_name,
-                    "success": False,
-                    "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                state["agent_results"][agent_name] = error_result
-                
-                await self._send_agent_error(state, agent_name, str(e))
-        
+
         # Update final progress
         state["progress"] = 90.0
         state["current_agent"] = None
-        
-        logger.info(f"Completed running {len(selected_agents)} agents")
+
+        logger.info(f"Completed running {len(selected_agents)} agents in parallel")
         return state
+
+    async def _execute_agent_with_progress(self, agent_name: str, state: AnalysisState,
+                                          index: int, total: int, base_progress: float,
+                                          progress_per_agent: float) -> Dict[str, Any]:
+        """Execute a single agent with progress tracking (for parallel execution)"""
+        try:
+            # Execute the agent
+            result = await self._execute_agent(agent_name, state)
+            return result
+
+        except Exception as e:
+            logger.error(f"Agent {agent_name} execution failed: {e}")
+            return {
+                "agent_name": agent_name,
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
     
     async def _run_data_quality_node(self, state: AnalysisState) -> AnalysisState:
         """Run data quality audit agent"""
@@ -793,9 +820,17 @@ Focus on answering the user's original question and providing actionable insight
                 "final_report": state.get("final_report")
             })
     
-    async def run_analysis(self, file_content: bytes, filename: str, user_question: str, selected_agents: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Run the complete multi-agent analysis workflow"""
-        
+    async def run_analysis(
+        self,
+        file_content: bytes,
+        filename: str,
+        user_question: str,
+        selected_agents: Optional[List[str]] = None,
+        analysis_id: Optional[str] = None,
+        db_session: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """Run the complete multi-agent analysis workflow with database tracking"""
+
         # Initialize state
         initial_state = AnalysisState(
             file_content=file_content,
@@ -814,11 +849,11 @@ Focus on answering the user's original question and providing actionable insight
             success=False,
             progress_callback=None
         )
-        
+
         # Run the workflow with configuration
         config = {"configurable": {"thread_id": f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"}}
         final_state = await self.graph.ainvoke(initial_state, config=config)
-        
+
         # Return in the expected format
         return {
             "success": final_state["success"],
