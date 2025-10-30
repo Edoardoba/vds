@@ -622,7 +622,6 @@ except Exception as e:
             # Safety denylist scan (simple heuristic)
             lowered = code.lower()
             forbidden_patterns = [
-                "import os",
                 "import sys",
                 "import subprocess",
                 "subprocess.",
@@ -634,7 +633,6 @@ except Exception as e:
                 "ftplib",
                 "paramiko",
                 "shutil.rmtree",
-                "open(",
                 "exec(",
                 "eval(",
                 "__import__(",

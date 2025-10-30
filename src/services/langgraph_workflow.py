@@ -492,27 +492,42 @@ class LangGraphMultiAgentWorkflow:
     async def _generate_report_node(self, state: AnalysisState) -> AnalysisState:
         """Generate comprehensive final report"""
         logger.info("Generating final report...")
-        
+
         state["progress"] = 100.0
         state["current_agent"] = None
         state["completed_steps"].append("report_generation")
-        
+
         await self._send_progress_update(state, "report_generation", "Generating comprehensive report...")
-        
+
         try:
             # Generate comprehensive report from all agent results
             report = await self._create_comprehensive_report(state)
             state["final_report"] = report
             state["success"] = True
-            
-            await self._send_workflow_completed(state)
-            
+
         except Exception as e:
             logger.error(f"Report generation failed: {e}")
             state["errors"].append(f"Report generation: {str(e)}")
             state["success"] = False
+            # Create a minimal report even on failure
+            state["final_report"] = {
+                "content": f"Report generation failed: {str(e)}",
+                "summary": "Analysis completed with errors",
+                "user_question": state.get("user_question", ""),
+                "data_overview": {
+                    "filename": state.get("filename", "unknown"),
+                },
+                "agents_executed": state.get("selected_agents", []),
+                "agent_results": state.get("agent_results", {}),
+                "errors": state.get("errors", []),
+                "success": False,
+                "generated_at": datetime.utcnow().isoformat()
+            }
             await self._send_error_update(state, "report_generation", str(e))
-        
+
+        # Always send workflow completed, even if report generation failed
+        await self._send_workflow_completed(state)
+
         return state
     
     async def _execute_agent(self, agent_name: str, state: AnalysisState) -> Dict[str, Any]:
