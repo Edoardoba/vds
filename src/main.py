@@ -75,12 +75,11 @@ def get_allowed_origins():
     
     return origins
 
-# Temporarily allow all origins for debugging CORS issues
-# TODO: Restrict this once we identify the correct Vercel URL
+# Configure CORS with explicit origins (production-safe)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Temporarily permissive for debugging
-    allow_credentials=False,  # Must be False when allow_origins=["*"]
+    allow_origins=get_allowed_origins(),
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
@@ -103,7 +102,7 @@ s3_service = S3Service()
 agent_service = AgentService()
 db_service = DatabaseService()
 
-# Initialize LangGraph workflow (will be initialized after WebSocket manager)
+# Initialize LangGraph workflow manager (workflows will be created per request)
 langgraph_workflow = None
 langgraph_websocket_manager = None
 
@@ -122,27 +121,43 @@ async def startup_event():
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
+        self.subscriptions: dict[WebSocket, set[str]] = {}
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self.subscriptions[websocket] = set()
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        if websocket in self.subscriptions:
+            del self.subscriptions[websocket]
+
+    def subscribe(self, websocket: WebSocket, workflow_id: str):
+        if websocket in self.subscriptions and workflow_id:
+            self.subscriptions[websocket].add(workflow_id)
 
     async def send_progress(self, message: dict):
-        for connection in self.active_connections:
+        target_workflow = message.get("workflow_id")
+        for connection in list(self.active_connections):
             try:
-                await connection.send_text(json.dumps(message))
+                if target_workflow:
+                    if target_workflow in self.subscriptions.get(connection, set()):
+                        await connection.send_text(json.dumps(message))
+                else:
+                    await connection.send_text(json.dumps(message))
             except:
                 # Remove disconnected connections
-                self.active_connections.remove(connection)
+                if connection in self.active_connections:
+                    self.active_connections.remove(connection)
+                if connection in self.subscriptions:
+                    del self.subscriptions[connection]
 
 manager = ConnectionManager()
 
-# Initialize LangGraph workflow with WebSocket manager
+# Initialize LangGraph WebSocket manager (workflow instances created per-request)
 langgraph_websocket_manager = LangGraphWebSocketManager(manager)
-langgraph_workflow = LangGraphMultiAgentWorkflow(langgraph_websocket_manager)
 
 
 @app.get("/")
@@ -157,8 +172,15 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive
-            await websocket.receive_text()
+            # Clients may send subscription messages: {"subscribe": "<analysis_id>"}
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+                if isinstance(msg, dict) and "subscribe" in msg:
+                    manager.subscribe(websocket, str(msg.get("subscribe")))
+            except Exception:
+                # Ignore non-JSON keepalive
+                pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -406,6 +428,29 @@ async def analyze_data(
                 errors=result.get("errors", [])
             )
 
+            # Emit cached result via WebSocket so frontend can display it
+            try:
+                await manager.send_progress({
+                    "type": "workflow_started",
+                    "workflow_id": analysis_record.id,
+                    "filename": file.filename,
+                    "user_question": question.strip(),
+                    "progress": 0.0,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+                # Immediately mark as completed for cache hits
+                await manager.send_progress({
+                    "type": "workflow_completed",
+                    "workflow_id": analysis_record.id,
+                    "progress": 100.0,
+                    "success": True,
+                    "final_report": result.get("report"),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            except Exception as ws_err:
+                logger.warning(f"Failed to emit cache hit events: {ws_err}")
+
             return clean_nan_values(result)
 
         # ========== NEW ANALYSIS ==========
@@ -423,12 +468,10 @@ async def analyze_data(
         # Update status to running
         db_service.update_analysis_status(db, analysis_record.id, "running")
 
-        # Create progress callback for WebSocket updates
-        async def progress_callback(progress_data):
-            await manager.send_progress(progress_data)
-
-        # Use LangGraph workflow for analysis
-        analysis_result = await langgraph_workflow.run_analysis(
+        # Create a new workflow instance per request to avoid cross-request state
+        local_workflow = LangGraphMultiAgentWorkflow(langgraph_websocket_manager)
+        # Use LangGraph workflow for analysis (workflow_started emitted inside workflow)
+        analysis_result = await local_workflow.run_analysis(
             file_content=file_content,
             filename=file.filename,
             user_question=question.strip(),

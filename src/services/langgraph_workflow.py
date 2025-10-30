@@ -42,8 +42,14 @@ class AnalysisState(TypedDict):
     final_report: Optional[Dict[str, Any]]
     success: bool
     
+    # Database tracking (only ID, not the session itself)
+    analysis_id: Optional[str]
+    
     # WebSocket callback for progress updates
     progress_callback: Optional[callable]
+    
+    # Non-serializable data stored separately
+    _db_session: Optional[Any]  # Private field that won't be serialized
 
 class LangGraphMultiAgentWorkflow:
     """LangGraph-based multi-agent workflow for data analysis"""
@@ -52,6 +58,9 @@ class LangGraphMultiAgentWorkflow:
         self.websocket_manager = websocket_manager
         self.checkpointer = MemorySaver()
         self.graph = self._build_graph()
+        # Store non-serializable session separately
+        self._current_db_session = None
+        self._current_analysis_id = None
         
     def _build_graph(self) -> StateGraph:
         """Build the complete multi-agent workflow graph"""
@@ -80,6 +89,14 @@ class LangGraphMultiAgentWorkflow:
         """Process the input data and create data sample"""
         logger.info("Processing data...")
         
+        # Send workflow started event (first node)
+        if self.websocket_manager and hasattr(self, '_current_analysis_id'):
+            await self.websocket_manager.send_workflow_started(
+                workflow_id=self._current_analysis_id or "",
+                filename=state.get("filename", ""),
+                user_question=state.get("user_question", "")
+            )
+        
         # Update progress
         state["progress"] = 10.0
         state["completed_steps"].append("data_processing")
@@ -101,7 +118,7 @@ class LangGraphMultiAgentWorkflow:
             state["shared_insights"] = {
                 "data_shape": state["data_sample"].get("shape", "Unknown"),
                 "columns": state["data_sample"].get("columns", []),
-                "data_types": state["data_sample"].get("dtypes", {}),
+                "data_types": state["data_sample"].get("data_types", {}),
                 "missing_values": state["data_sample"].get("missing_values", {}),
                 "sample_data": state["data_sample"].get("sample_data", [])
             }
@@ -148,71 +165,131 @@ class LangGraphMultiAgentWorkflow:
         return state
     
     async def _run_dynamic_agents_node(self, state: AnalysisState) -> AnalysisState:
-        """Run all selected agents dynamically with PARALLEL execution"""
-        logger.info("Running dynamic agents...")
+        """Run selected agents with hybrid execution: sequential prerequisites then parallel batches"""
+        logger.info("Running dynamic agents (hybrid mode)...")
 
         selected_agents = state.get("selected_agents", [])
         if not selected_agents:
             logger.warning("No agents selected, skipping agent execution")
             return state
 
-        logger.info(f"Running {len(selected_agents)} agents in PARALLEL: {selected_agents}")
+        # Build staged execution from config.yaml if available
+        try:
+            from services.claude_service import ClaudeService
+            _cs = ClaudeService()
+            exec_cfg = _cs.execution_config or {}
+        except Exception:
+            exec_cfg = {}
 
-        # Calculate progress per agent
-        progress_per_agent = 60.0 / len(selected_agents)  # Use 60% of total progress for agents
+        # Defaults if no config
+        configured_stages = exec_cfg.get("stages", [])
+        max_parallel = int(exec_cfg.get("max_parallel", 4))
+
+        # Helper to get agent stage tag
+        def _agent_stage(a: str) -> str:
+            try:
+                return _cs.agent_configs.get(a, {}).get('stage', '')
+            except Exception:
+                return ''
+
+        scheduled = []
+        stage_plan = []  # List of tuples: (stage_dict, [agents])
+
+        if configured_stages:
+            for st in configured_stages:
+                name = st.get('name')
+                listed = st.get('agents', []) or []
+                parallel = bool(st.get('parallel', True))
+                stop_on_failure = bool(st.get('stop_on_failure', False))
+
+                if listed:
+                    stage_agents = [a for a in selected_agents if a in listed and a not in scheduled]
+                else:
+                    # Auto-include by agent 'stage' tag
+                    stage_agents = [a for a in selected_agents if _agent_stage(a) == name and a not in scheduled]
+
+                if stage_agents:
+                    scheduled.extend(stage_agents)
+                    stage_plan.append(({"name": name, "parallel": parallel, "stop_on_failure": stop_on_failure}, stage_agents))
+
+        # Any remaining selected agents not assigned above
+        remaining = [a for a in selected_agents if a not in scheduled]
+        if remaining:
+            stage_plan.append(({"name": "remaining", "parallel": True, "stop_on_failure": False}, remaining))
+
+        total_agents = len(selected_agents)
+        progress_budget = 60.0  # portion reserved for agents
+        progress_per_agent = progress_budget / max(total_agents, 1)
         base_progress = 30.0
 
-        # Send agent started notifications for all agents
-        for agent_name in selected_agents:
-            state["current_agent"] = agent_name
-            await self._send_agent_started(state, agent_name)
-
-        # Execute all agents in parallel using asyncio.gather
-        tasks = []
-        for i, agent_name in enumerate(selected_agents):
-            task = self._execute_agent_with_progress(
-                agent_name, state, i, len(selected_agents), base_progress, progress_per_agent
-            )
-            tasks.append(task)
-
-        # Wait for all agents to complete (with exception handling)
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Process results
-        for i, (agent_name, result) in enumerate(zip(selected_agents, results)):
+        # Helper to process a single result into state
+        async def _apply_result(agent_name: str, res):
             try:
-                if isinstance(result, Exception):
-                    logger.error(f"Agent {agent_name} failed with exception: {result}")
-                    state["errors"].append(f"{agent_name}: {str(result)}")
-
+                if isinstance(res, Exception):
+                    logger.error(f"Agent {agent_name} failed with exception: {res}")
+                    state["errors"].append(f"{agent_name}: {str(res)}")
                     error_result = {
                         "agent_name": agent_name,
                         "success": False,
-                        "error": str(result),
+                        "error": str(res),
                         "timestamp": datetime.utcnow().isoformat()
                     }
                     state["agent_results"][agent_name] = error_result
-                    await self._send_agent_error(state, agent_name, str(result))
+                    await self._send_agent_error(state, agent_name, str(res))
                 else:
-                    state["agent_results"][agent_name] = result
+                    state["agent_results"][agent_name] = res
                     state["completed_steps"].append(agent_name)
-
-                    # Update shared insights
-                    if result.get("success") and result.get("code_result", {}).get("insights"):
-                        state["shared_insights"][agent_name] = result["code_result"]["insights"]
-
-                    await self._send_agent_completed(state, agent_name, result)
-                    logger.info(f"Completed agent {agent_name}: {result.get('success', False)}")
-
+                    insights = (
+                        res.get("execution_result", {}).get("insights")
+                        or res.get("code_result", {}).get("insights")
+                    )
+                    if res.get("success") and insights:
+                        state["shared_insights"][agent_name] = insights
+                    await self._send_agent_completed(state, agent_name, res)
+                    logger.info(f"Completed agent {agent_name}: {res.get('success', False)}")
             except Exception as e:
                 logger.error(f"Error processing result for agent {agent_name}: {e}")
                 state["errors"].append(f"{agent_name}: {str(e)}")
 
-        # Update final progress
-        state["progress"] = 90.0
-        state["current_agent"] = None
+        # Execute the plan stage by stage
+        for stage_meta, agents_in_stage in stage_plan:
+            parallel = stage_meta["parallel"]
+            stop_on_failure = stage_meta["stop_on_failure"]
 
-        logger.info(f"Completed running {len(selected_agents)} agents in parallel")
+            if not agents_in_stage:
+                continue
+
+            if not parallel:
+                # Sequential execution
+                for agent_name in agents_in_stage:
+                    state["current_agent"] = agent_name
+                    await self._send_agent_started(state, agent_name)
+                    res = await self._execute_agent(agent_name, state)
+                    await _apply_result(agent_name, res)
+                    state["progress"] = min(100.0, state["progress"] + progress_per_agent)
+                    await self._send_progress_update(state, agent_name, f"Completed {agent_name}")
+                    if stop_on_failure and (isinstance(res, Exception) or not res.get("success", False)):
+                        logger.warning(f"Stopping stage '{stage_meta['name']}' due to failure in {agent_name}")
+                        break
+            else:
+                # Parallel with optional max_parallel limiting
+                idx = 0
+                n = len(agents_in_stage)
+                while idx < n:
+                    batch = agents_in_stage[idx: idx + max_parallel]
+                    for agent_name in batch:
+                        await self._send_agent_started(state, agent_name)
+                    tasks = [self._execute_agent(agent_name, state) for agent_name in batch]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    for agent_name, res in zip(batch, results):
+                        await _apply_result(agent_name, res)
+                        state["progress"] = min(100.0, state["progress"] + progress_per_agent)
+                    idx += max_parallel
+
+        # Finalize
+        state["progress"] = max(state["progress"], 90.0)
+        state["current_agent"] = None
+        logger.info("Completed staged execution from config")
         return state
 
     async def _execute_agent_with_progress(self, agent_name: str, state: AnalysisState,
@@ -303,7 +380,7 @@ class LangGraphMultiAgentWorkflow:
                 dtype = col.get("dtype", "")
             elif isinstance(col, str):
                 # If column is just a string, check the dtypes dict
-                dtypes = data_sample.get("dtypes", {})
+                dtypes = data_sample.get("data_types", {})
                 dtype = dtypes.get(col, "")
             else:
                 continue
@@ -434,7 +511,21 @@ class LangGraphMultiAgentWorkflow:
     
     async def _execute_agent(self, agent_name: str, state: AnalysisState) -> Dict[str, Any]:
         """Execute a specific agent with access to shared state"""
+        agent_execution_id = None
+        start_time = datetime.utcnow()
+        
         try:
+            # Create agent execution record if DB tracking is enabled
+            if self._current_analysis_id and self._current_db_session:
+                from services.database_service import DatabaseService
+                db_service = DatabaseService()
+                agent_execution = db_service.create_agent_execution(
+                    db=self._current_db_session,
+                    analysis_id=self._current_analysis_id,
+                    agent_name=agent_name
+                )
+                agent_execution_id = agent_execution.id
+            
             # Import and use existing agent service
             from services.agent_service import AgentService
             agent_service = AgentService()
@@ -482,10 +573,38 @@ class LangGraphMultiAgentWorkflow:
                 "success": execution_result.get("success", False)
             }
             
+            # Complete agent execution record
+            if agent_execution_id and self._current_db_session:
+                from services.database_service import DatabaseService
+                db_service = DatabaseService()
+                db_service.complete_agent_execution(
+                    db=self._current_db_session,
+                    execution_id=agent_execution_id,
+                    success=result["success"],
+                    code_result=code_result,
+                    output=execution_result.get("output"),
+                    error=execution_result.get("error")
+                )
+            
             return result
             
         except Exception as e:
             logger.error(f"Error executing agent {agent_name}: {str(e)}")
+            
+            # Record error in DB if tracking enabled
+            if agent_execution_id and self._current_db_session:
+                try:
+                    from services.database_service import DatabaseService
+                    db_service = DatabaseService()
+                    db_service.complete_agent_execution(
+                        db=self._current_db_session,
+                        execution_id=agent_execution_id,
+                        success=False,
+                        error=str(e)
+                    )
+                except Exception as db_err:
+                    logger.error(f"Failed to record agent execution error: {db_err}")
+            
             return {
                 "agent_name": agent_name,
                 "success": False,
@@ -767,7 +886,8 @@ Focus on answering the user's original question and providing actionable insight
                 "progress": state["progress"],
                 "message": message,
                 "completed_steps": state["completed_steps"],
-                "current_agent": state.get("current_agent")
+                "current_agent": state.get("current_agent"),
+                "workflow_id": self._current_analysis_id or ""
             })
     
     async def _send_agent_started(self, state: AnalysisState, agent_name: str):
@@ -776,7 +896,8 @@ Focus on answering the user's original question and providing actionable insight
             await self.websocket_manager.send_progress({
                 "type": "agent_started",
                 "agent_name": agent_name,
-                "progress": state["progress"]
+                "progress": state["progress"],
+                "workflow_id": self._current_analysis_id or ""
             })
     
     async def _send_agent_completed(self, state: AnalysisState, agent_name: str, result: Dict[str, Any]):
@@ -787,7 +908,8 @@ Focus on answering the user's original question and providing actionable insight
                 "agent_name": agent_name,
                 "progress": state["progress"],
                 "result": result,
-                "success": result.get("success", False)
+                "success": result.get("success", False),
+                "workflow_id": self._current_analysis_id or ""
             })
     
     async def _send_agent_error(self, state: AnalysisState, agent_name: str, error: str):
@@ -797,7 +919,8 @@ Focus on answering the user's original question and providing actionable insight
                 "type": "agent_error",
                 "agent_name": agent_name,
                 "error": error,
-                "progress": state["progress"]
+                "progress": state["progress"],
+                "workflow_id": self._current_analysis_id or ""
             })
     
     async def _send_error_update(self, state: AnalysisState, step: str, error: str):
@@ -807,7 +930,8 @@ Focus on answering the user's original question and providing actionable insight
                 "type": "workflow_error",
                 "step": step,
                 "error": error,
-                "progress": state["progress"]
+                "progress": state["progress"],
+                "workflow_id": self._current_analysis_id or ""
             })
     
     async def _send_workflow_completed(self, state: AnalysisState):
@@ -817,7 +941,8 @@ Focus on answering the user's original question and providing actionable insight
                 "type": "workflow_completed",
                 "progress": 100.0,
                 "success": state["success"],
-                "final_report": state.get("final_report")
+                "final_report": state.get("final_report"),
+                "workflow_id": self._current_analysis_id or ""
             })
     
     async def run_analysis(
@@ -831,7 +956,11 @@ Focus on answering the user's original question and providing actionable insight
     ) -> Dict[str, Any]:
         """Run the complete multi-agent analysis workflow with database tracking"""
 
-        # Initialize state
+        # Store non-serializable session in class attributes
+        self._current_db_session = db_session
+        self._current_analysis_id = analysis_id
+        
+        # Initialize state (without db_session - not serializable)
         initial_state = AnalysisState(
             file_content=file_content,
             filename=filename,
@@ -847,7 +976,9 @@ Focus on answering the user's original question and providing actionable insight
             shared_insights={},
             final_report=None,
             success=False,
-            progress_callback=None
+            analysis_id=analysis_id,
+            progress_callback=None,
+            _db_session=None  # Not used, just to satisfy TypedDict
         )
 
         # Run the workflow with configuration

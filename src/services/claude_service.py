@@ -6,6 +6,7 @@ import json
 import logging
 import yaml
 from typing import Dict, Any, List, Optional
+import asyncio
 from pathlib import Path
 import httpx
 from config import settings
@@ -23,14 +24,14 @@ class ClaudeService:
         self.temperature = settings.CLAUDE_TEMPERATURE
         self.base_url = "https://api.anthropic.com/v1/messages"
         
-        # Load agent configurations dynamically
-        self.agent_configs = self._load_agent_configs()
+        # Load configurations dynamically (agents + execution plan)
+        self.agent_configs, self.execution_config = self._load_configs()
         
         if not self.api_key:
             logger.warning("ANTHROPIC_API_KEY not found in environment variables")
     
-    def _load_agent_configs(self) -> Dict[str, Any]:
-        """Load agent configurations from config.yaml"""
+    def _load_configs(self) -> (Dict[str, Any], Dict[str, Any]):
+        """Load agent and execution configurations from config.yaml"""
         try:
             # Get the directory where this file is located
             current_dir = Path(__file__).parent
@@ -53,7 +54,6 @@ class ClaudeService:
                         with open(config_path, 'r', encoding='utf-8') as file:
                             config_data = yaml.safe_load(file)
                             used_path = str(config_path)
-                            logger.info(f"Successfully loaded config from: {config_path}")
                             break
                 except Exception as e:
                     logger.debug(f"Failed to load from {config_path}: {e}")
@@ -61,14 +61,14 @@ class ClaudeService:
             
             if config_data is None:
                 logger.error(f"Could not find config.yaml in any of these paths: {[str(p) for p in possible_paths]}")
-                return {}
+                return {}, {}
             
             agents_config = config_data.get('agents', {})
-            logger.info(f"Loaded {len(agents_config)} agent configs from {used_path}")
-            return agents_config
+            execution_config = config_data.get('execution', {})
+            return agents_config, execution_config
         except Exception as e:
             logger.error(f"Error loading agent configs: {str(e)}")
-            return {}
+            return {}, {}
     
     def _generate_agents_section(self) -> str:
         """Generate the agents section for the prompt dynamically from config"""
@@ -296,8 +296,6 @@ class ClaudeService:
         """
         try:
             prompt = self._create_agent_selection_prompt(data_sample, user_question)
-
-            print("AA", prompt)
             
             response = await self._call_claude_api(prompt)
             
@@ -340,7 +338,6 @@ class ClaudeService:
             # Parse the code generation response
             code_result = self._parse_code_generation_response(response)
             
-            logger.info(f"Generated code for agent: {agent_name}")
             return code_result
             
         except Exception as e:
@@ -383,19 +380,30 @@ class ClaudeService:
             ]
         }
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                self.base_url,
-                headers=headers,
-                json=payload
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Claude API error: {response.status_code} - {response.text}")
-                raise Exception(f"Claude API error: {response.status_code}")
-            
-            result = response.json()
-            return result["content"][0]["text"]
+        # Simple retry with exponential backoff
+        last_err: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        self.base_url,
+                        headers=headers,
+                        json=payload
+                    )
+                if response.status_code == 200:
+                    result = response.json()
+                    return result["content"][0]["text"]
+                else:
+                    msg = f"Claude API error: {response.status_code} - {response.text[:300]}"
+                    last_err = Exception(msg)
+                    logger.warning(msg)
+            except Exception as e:
+                last_err = e
+                logger.warning(f"Claude API call failed (attempt {attempt+1}/3): {e}")
+            # backoff
+            await asyncio.sleep(0.5 * (2 ** attempt))
+        # If we reached here, all retries failed
+        raise last_err if last_err else Exception("Claude API error: unknown")
     
     def _create_agent_selection_prompt(self, data_sample: Dict[str, Any], user_question: str) -> str:
         """Create prompt for agent selection"""
@@ -514,6 +522,8 @@ Please respond with ONLY a JSON object containing:
     "insights": "Key insights and findings from this analysis"
 }}
 
+CRITICAL: The "code" field must be a VALID JSON string with ALL newlines escaped as \\n. Do NOT include actual newlines in the JSON.
+
 Response (JSON only):"""
     
     def _parse_agent_selection_response(self, response: str) -> List[str]:
@@ -521,7 +531,6 @@ Response (JSON only):"""
         try:
             # Try to extract JSON array from response
             response = response.strip()
-            logger.info(f"Raw Claude response: {response}")
             
             # Handle cases where response might have extra text
             start_idx = response.find('[')
@@ -529,7 +538,6 @@ Response (JSON only):"""
             
             if start_idx != -1 and end_idx != -1:
                 json_str = response[start_idx:end_idx+1]
-                logger.info(f"Extracted JSON: {json_str}")
                 agent_names = json.loads(json_str)
                 logger.info(f"Parsed agent names: {agent_names}")
                 
@@ -558,27 +566,40 @@ Response (JSON only):"""
         try:
             # Extract JSON from response
             response = response.strip()
-            logger.info(f"Raw Claude response for code generation: {response[:500]}...")
+            
+            # Remove markdown code blocks if present
+            if response.startswith('```json'):
+                response = response[7:]
+            if response.startswith('```'):
+                response = response[3:]
+            if response.endswith('```'):
+                response = response[:-3]
+            response = response.strip()
             
             start_idx = response.find('{')
             end_idx = response.rfind('}')
             
             if start_idx != -1 and end_idx != -1:
                 json_str = response[start_idx:end_idx+1]
-                logger.info(f"Extracted JSON: {json_str[:200]}...")
                 
-                code_result = json.loads(json_str)
+                # Try to parse JSON
+                try:
+                    code_result = json.loads(json_str)
+                except json.JSONDecodeError as e:
+                    # Try to fix common JSON issues
+                    logger.warning(f"JSON parse failed, attempting repair...")
+                    json_str = self._repair_json(json_str)
+                    code_result = json.loads(json_str)
                 
                 # Validate required fields
                 required_fields = ["code", "description", "outputs", "insights"]
                 for field in required_fields:
                     if field not in code_result:
                         code_result[field] = ""
-                        logger.warning(f"Missing field '{field}' in code generation response")
                 
                 # Validate that code is not empty
                 if not code_result.get("code", "").strip():
-                    logger.warning("Generated code is empty")
+                    logger.warning("Generated code is empty, using fallback")
                     code_result["code"] = """
 # Simple fallback analysis
 print("Performing basic data analysis...")
@@ -590,19 +611,59 @@ if len(df.select_dtypes(include=[np.number]).columns) > 0:
     print(f"Numerical summary:\\n{df.describe()}")
 """
                 
-                logger.info(f"Successfully parsed code generation for agent")
                 return code_result
             
             else:
-                logger.warning("Could not find JSON in code generation response")
+                logger.error("Could not find JSON in code generation response")
                 return self._create_fallback_code_result("Failed to parse JSON from response")
                 
         except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error in code generation: {str(e)}")
+            logger.error(f"JSON decode error: {str(e)}")
+            # Log full response for debugging
+            logger.error(f"Full response (first 1000 chars): {response[:1000]}")
             return self._create_fallback_code_result(f"JSON decode error: {str(e)}")
         except Exception as e:
             logger.error(f"Error parsing code generation: {str(e)}")
             return self._create_fallback_code_result(f"Parse error: {str(e)}")
+    
+    def _repair_json(self, json_str: str) -> str:
+        """Attempt to repair common JSON issues with unescaped newlines"""
+        import re
+        import io
+        
+        # More robust approach: handle multiline strings properly
+        # The issue is unescaped newlines inside JSON string values
+        
+        # Strategy: Find all string fields and escape newlines in them
+        lines = json_str.split('\n')
+        result_lines = []
+        in_string = False
+        escape_next = False
+        
+        for line in lines:
+            if escape_next:
+                escape_next = False
+                result_lines.append(line)
+                continue
+                
+            # Check if line is part of a multiline string
+            quote_count = line.count('"') - line.count('\\"')
+            
+            if in_string:
+                # Inside a string - escape the newline at end
+                result_lines.append(line + '\\n')
+                
+                # Check if string ends on this line
+                if quote_count % 2 == 1:
+                    in_string = False
+            else:
+                # Not in string, check if string starts
+                if quote_count % 2 == 1:
+                    in_string = True
+                
+                result_lines.append(line)
+        
+        return '\n'.join(result_lines).replace('\\n\\n', '\\n')
     
     def _create_fallback_code_result(self, error_msg: str) -> Dict[str, Any]:
         """Create a fallback code result when parsing fails"""

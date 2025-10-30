@@ -832,3 +832,29 @@ claude_api:
   model: "claude-haiku-4-5-20251001"  # Using Haiku for faster responses
   max_tokens: 4000
   temperature: 0.1  # Low temperature for more consistent code generation
+
+# Execution plan configuration
+execution:
+  # Max number of agents to run in parallel within a stage (if stage.parallel is true)
+  max_parallel: 3
+  # Ordered stages. Agents within a stage may run sequentially or in parallel.
+  stages:
+    - name: "data_preparation"
+      # If agents list is provided, those are run in this stage (intersection with selected agents)
+      agents: ["data_cleaning", "data_quality_audit"]
+      parallel: false
+      stop_on_failure: false
+    - name: "exploration"
+      agents: ["exploratory_data_analysis", "data_visualization"]
+      parallel: true
+      stop_on_failure: false
+    - name: "analysis"
+      # Empty agents means: auto-include any selected agents tagged with stage: analysis
+      agents: []
+      parallel: true
+      stop_on_failure: false
+    - name: "specialized"
+      # Any remaining selected agents not assigned above
+      agents: []
+      parallel: true
+      stop_on_failure: false

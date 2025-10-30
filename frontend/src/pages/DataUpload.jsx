@@ -357,7 +357,9 @@ export default function DataUpload() {
         currentAgent: null,
         progress: 0,
         completedAgents: [],
-        startTime: new Date().toISOString()
+        startTime: new Date().toISOString(),
+        // Ensure user question is available even if WS event lacks it
+        userQuestion: (query || '').trim()
       })
 
       console.log('Calling analyzeData API...')

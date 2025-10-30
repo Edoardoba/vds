@@ -567,16 +567,25 @@ const AgentResultsTabs = ({
                   
                   // Small delay to ensure modal closes before navigation
                   setTimeout(() => {
+                    // Derive user question from multiple possible sources
+                    const derivedUserQuestion = (
+                      analysisProgress?.userQuestion ||
+                      analysisProgress?.finalReport?.user_question ||
+                      analysisProgress?.finalReport?.question ||
+                      null
+                    )
+                    const questionForState = derivedUserQuestion || 'Analysis Question'
+                    
                     if (navigate) {
                       navigate('/analysis-results', {
                         state: {
                           analysisResult: wrapped,
-                          userQuestion: analysisProgress.userQuestion || 'Analysis Question'
+                          userQuestion: questionForState
                         }
                       })
                     } else {
                       sessionStorage.setItem('analysisResult', JSON.stringify(wrapped))
-                      sessionStorage.setItem('userQuestion', analysisProgress.userQuestion || 'Analysis Question')
+                      sessionStorage.setItem('userQuestion', questionForState)
                       window.location.href = '/analysis-results'
                     }
                   }, 100)

@@ -106,12 +106,11 @@ class AgentService:
                         # logger.info(f"Applied config for agent: {agent_instance.name}")
                     
                     agents[agent_instance.name] = agent_instance
-                    logger.info(f"Loaded agent: {agent_instance.name}")
                     
                 except Exception as e:
                     logger.error(f"Failed to load agent {module_name}: {str(e)}")
             
-            logger.info(f"Successfully loaded {len(agents)} agents")
+            logger.info(f"Loaded {len(agents)} analysis agents")
             return agents
             
         except Exception as e:
@@ -144,29 +143,24 @@ class AgentService:
             Complete analysis results
         """
         try:
-            # Step 1: Process data sample
-            logger.info("Step 1: Processing data sample...")
+            # Process data sample
             data_sample = self.data_processor.read_file_sample(
                 file_content, filename, sample_rows=5
             )
             
-            # Step 2: Select appropriate agents (or use provided override)
-            logger.info("Step 2: Selecting agents...")
-            if selected_agents and isinstance(selected_agents, list) and len(selected_agents) > 0:
-                logger.info(f"Using client-provided agents: {selected_agents}")
-            else:
+            # Select appropriate agents (or use provided override)
+            if not (selected_agents and isinstance(selected_agents, list) and len(selected_agents) > 0):
                 selected_agents = await self._select_agents_smart(
                     data_sample, user_question
                 )
+            logger.info(f"Analyzing with {len(selected_agents)} agents: {', '.join(selected_agents)}")
             
-            # Step 3: Execute selected agents
-            logger.info(f"Step 3: Executing {len(selected_agents)} agents...")
+            # Execute selected agents
             agent_results = await self._execute_agents(
                 selected_agents, data_sample, user_question, file_content, progress_callback
             )
             
-            # Step 4: Generate comprehensive report
-            logger.info("Step 4: Generating report...")
+            # Generate comprehensive report
             report = await self._generate_report(
                 data_sample, user_question, selected_agents, agent_results
             )
@@ -246,26 +240,21 @@ class AgentService:
             List of selected agent names
         """
         try:
-            logger.info("Using Claude API for intelligent agent selection...")
-            
             # First, try using Claude API for agent selection
             try:
                 selected_agents = await self.claude_service.select_agents(data_sample, user_question)
                 if selected_agents and len(selected_agents) > 0:
-                    logger.info(f"Claude selected agents: {selected_agents}")
                     return selected_agents
             except Exception as claude_error:
-                logger.warning(f"Claude API selection failed: {str(claude_error)}")
+                logger.warning(f"Agent selection failed, using fallback: {str(claude_error)}")
             
             # Fallback: Use individual agent scoring logic
-            logger.info("Using fallback agent scoring logic...")
             agent_scores = []
             
             # Calculate match scores for each agent
             for agent_name, agent in self.agents.items():
                 confidence = agent.matches_request(user_question, data_sample['columns'])
                 agent_scores.append((agent_name, confidence))
-                logger.info(f"Agent {agent_name} confidence: {confidence:.2f}")
             
             # Sort by confidence score (descending)
             agent_scores.sort(key=lambda x: x[1], reverse=True)
@@ -280,7 +269,6 @@ class AgentService:
             if not selected_agents:
                 selected_agents = ["data_cleaning", "data_visualization", "statistical_analysis"]
             
-            logger.info(f"Fallback selected agents: {selected_agents}")
             return selected_agents
             
         except Exception as e:
@@ -295,8 +283,6 @@ class AgentService:
         
         for i, agent_name in enumerate(agent_names):
             try:
-                logger.info(f"Executing agent: {agent_name}")
-                
                 # Emit progress update - agent starting
                 if progress_callback:
                     await progress_callback({
@@ -467,34 +453,36 @@ class AgentService:
                 with open(data_file_path, 'wb') as f:
                     f.write(file_content)
                 
+                # Sanitize and validate generated code before execution
+                raw_user_code = code_result.get('code', '')
+                sanitized_user_code = self._sanitize_user_code(raw_user_code)
+
+                is_valid, validation_error = self._validate_generated_code(sanitized_user_code)
+                if not is_valid:
+                    logger.warning(f"Generated code for {agent_name} failed validation: {validation_error}")
+                    # Attempt minimal newline normalization and re-validate
+                    sanitized_user_code = sanitized_user_code.replace('\r\n', '\n').replace('\r', '\n')
+                    is_valid, _ = self._validate_generated_code(sanitized_user_code)
+
                 # Create the Python script
                 script_content = self._create_execution_script(
-                    code_result['code'], str(data_file_path), temp_path
+                    sanitized_user_code, str(data_file_path), temp_path
                 )
                 
                 script_path = temp_path / f"{agent_name}_analysis.py"
                 
-                # Log the generated script for debugging
-                logger.info(f"Generated script for {agent_name}:")
-                logger.info("=" * 50)
-                logger.info(script_content)
-                logger.info("=" * 50)
-                
+                # Write script to file (no logging)
                 with open(script_path, 'w', encoding='utf-8') as f:
                     f.write(script_content)
                 
                 # Execute the script
-                logger.info(f"Executing script for agent {agent_name}")
                 result = await self._run_python_script(script_path, temp_path)
                 
-                logger.info(f"Script execution result for {agent_name}: success={result['success']}")
                 if not result["success"]:
-                    logger.error(f"Script output for {agent_name}: {result['output']}")
-                    logger.error(f"Script error for {agent_name}: {result.get('error')}")
+                    logger.error(f"Agent {agent_name} failed: {result.get('error', 'Unknown error')}")
                 
                 # Collect generated files
                 output_files = self._collect_output_files(temp_path, agent_name)
-                logger.info(f"Collected {len(output_files)} output files for {agent_name}")
                 
                 return {
                     "success": result["success"],
@@ -535,6 +523,7 @@ import sys
 import os
 from pathlib import Path
 import traceback
+import time
 
 # Set output directory
 output_dir = Path(r"{output_dir}")
@@ -549,6 +538,17 @@ plt.rcParams['figure.figsize'] = (10, 6)
 plt.rcParams['figure.dpi'] = 100
 plt.rcParams['savefig.dpi'] = 100
 plt.rcParams['savefig.bbox'] = 'tight'
+
+def _auto_save_show(*args, **kwargs):
+    try:
+        filename = f"figure_{int(time.time()*1000)}.png"
+        plt.savefig(filename)
+        plt.close()
+        print(f"Saved figure: {filename}")
+    except Exception as _e:
+        print(f"Failed to save figure: {_e}")
+
+plt.show = _auto_save_show
 
 try:
     # Load the data
@@ -582,6 +582,71 @@ except Exception as e:
 '''
         
         return script_template
+    
+    def _sanitize_user_code(self, code: str) -> str:
+        """Remove markdown fencing, magics, and normalize common patterns."""
+        try:
+            if not isinstance(code, str):
+                return ""
+            cleaned = code.strip()
+            # Remove surrounding triple backtick blocks
+            if cleaned.startswith('```') and cleaned.endswith('```'):
+                cleaned = cleaned[3:-3].strip()
+            # Remove language hint prefix
+            if cleaned.lower().startswith('python\n'):
+                cleaned = cleaned[7:]
+            if cleaned.lower().startswith('```python'):
+                cleaned = cleaned[9:].strip()
+                if cleaned.endswith('```'):
+                    cleaned = cleaned[:-3].strip()
+            # Strip stray backticks
+            cleaned = cleaned.replace('```', '')
+            # Comment out Jupyter/IPython magics and shell escapes
+            normalized_lines: List[str] = []
+            for line in cleaned.split('\n'):
+                stripped = line.lstrip()
+                if stripped.startswith('%') or stripped.startswith('!'):
+                    normalized_lines.append('# ' + line)
+                else:
+                    normalized_lines.append(line)
+            return '\n'.join(normalized_lines)
+        except Exception:
+            return code if isinstance(code, str) else ""
+
+    def _validate_generated_code(self, code: str) -> (bool, str):
+        """Quick AST validation and safety screening for generated code."""
+        try:
+            import ast
+            # Basic syntax check
+            ast.parse(code)
+            # Safety denylist scan (simple heuristic)
+            lowered = code.lower()
+            forbidden_patterns = [
+                "import os",
+                "import sys",
+                "import subprocess",
+                "subprocess.",
+                "os.system",
+                "import socket",
+                "requests",
+                "httpx",
+                "urllib",
+                "ftplib",
+                "paramiko",
+                "shutil.rmtree",
+                "open(",
+                "exec(",
+                "eval(",
+                "__import__(",
+            ]
+            for pat in forbidden_patterns:
+                if pat in lowered:
+                    return False, f"Forbidden pattern detected in generated code: {pat}"
+            return True, ""
+        except SyntaxError as e:
+            return False, f"SyntaxError: {e.msg} at line {e.lineno}"
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
     
     def _indent_code(self, code: str, indent: str = "    ") -> str:
         """Indent code lines properly"""
@@ -646,7 +711,7 @@ except Exception as e:
             for cmd in python_commands:
                 try:
                     process = await asyncio.create_subprocess_exec(
-                        cmd, str(script_path),
+                        cmd, "-I", str(script_path),
                         cwd=working_dir,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.STDOUT,
@@ -670,9 +735,6 @@ except Exception as e:
             execution_time = (end_time - start_time).total_seconds()
             
             output = stdout.decode('utf-8', errors='replace')
-            
-            # Log the output for debugging
-            logger.info(f"Script output: {output[:500]}...")  # Log first 500 chars
             
             return {
                 "success": process.returncode == 0,
@@ -730,11 +792,15 @@ except Exception as e:
                         }
                         
                         if file_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.svg']:
-                            # For images, we could store as base64 or save to S3
-                            with open(file_path, 'rb') as f:
-                                import base64
-                                file_info["content"] = base64.b64encode(f.read()).decode('utf-8')
-                                file_info["encoding"] = "base64"
+                            # For images, embed base64 only if reasonably small (<=200KB)
+                            if file_path.stat().st_size <= 200_000:
+                                with open(file_path, 'rb') as f:
+                                    import base64
+                                    file_info["content"] = base64.b64encode(f.read()).decode('utf-8')
+                                    file_info["encoding"] = "base64"
+                            else:
+                                file_info["content"] = None
+                                file_info["encoding"] = "omitted-large"
                         else:
                             # For text files
                             try:

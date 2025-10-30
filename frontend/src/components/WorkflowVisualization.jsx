@@ -163,6 +163,12 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
     const currentAgent = analysisProgress.currentAgent
     const finalReport = analysisProgress.finalReport
     
+    // If we already have a final report (e.g., cache hit), treat all steps as completed
+    // so the UI reflects a fully completed workflow even without granular progress events
+    if (finalReport && step.id !== 'report_generator') {
+      return 'completed'
+    }
+
     // Special handling for report generation step
     if (step.id === 'report_generator') {
       if (finalReport) {
