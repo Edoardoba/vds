@@ -159,12 +159,39 @@ export const apiEndpoints = {
   getAvailableAgents: () => {
     return api.get('/agents/available')
   },
-  
+
+  // ========== NEW: History & Analytics Endpoints ==========
+
+  // Get recent analysis history
+  getRecentHistory: (limit = 10) => {
+    return api.get('/history/recent', { params: { limit } })
+  },
+
+  // Get specific analysis by ID
+  getAnalysisById: (analysisId) => {
+    return api.get(`/history/${analysisId}`)
+  },
+
+  // Get analytics statistics
+  getAnalyticsStatistics: () => {
+    return api.get('/analytics/statistics')
+  },
+
+  // Get agent performance metrics
+  getAgentPerformance: () => {
+    return api.get('/analytics/agent-performance')
+  },
+
+  // Clear expired cache
+  clearExpiredCache: () => {
+    return api.delete('/cache/clear-expired')
+  },
+
   // Legacy endpoints (maintained for backward compatibility)
   askQuestion: (question, fileId = null) => {
     return api.post('/ask-question', { question, file_id: fileId })
   },
-  
+
   generateReport: (fileId, reportType = 'summary') => {
     return api.post('/generate-report', { file_id: fileId, report_type: reportType })
   },
