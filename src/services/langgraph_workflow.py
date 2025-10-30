@@ -566,9 +566,16 @@ class LangGraphMultiAgentWorkflow:
             if not agent_config:
                 raise ValueError(f"Config for agent {agent_name} not found")
             
-            # Generate code with access to shared insights
+            # Collect previous agent results to pass to current agent
+            previous_results = {}
+            for completed_agent in state.get("completed_steps", []):
+                if completed_agent in state.get("agent_results", {}):
+                    previous_results[completed_agent] = state["agent_results"][completed_agent]
+
+            # Generate code with access to previous results
             code_result = await claude_service.generate_agent_code(
-                agent_name, agent_config, state["data_sample"], state["user_question"]
+                agent_name, agent_config, state["data_sample"], state["user_question"],
+                previous_results=previous_results
             )
             
             # Execute the code

@@ -316,23 +316,25 @@ class ClaudeService:
             # Fallback to default agents
             return self._get_default_agents()
     
-    async def generate_agent_code(self, agent_name: str, agent_config: Dict[str, Any], 
-                                data_sample: Dict[str, Any], user_question: str) -> Dict[str, Any]:
+    async def generate_agent_code(self, agent_name: str, agent_config: Dict[str, Any],
+                                data_sample: Dict[str, Any], user_question: str,
+                                previous_results: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generate Python code for a specific agent to execute
-        
+
         Args:
             agent_name: Name of the agent
             agent_config: Agent configuration from YAML
             data_sample: Sample data
             user_question: User's question
-            
+            previous_results: Results from all previous agents in the workflow
+
         Returns:
             Dict containing generated code and metadata
         """
         try:
             prompt = self._create_code_generation_prompt(
-                agent_name, agent_config, data_sample, user_question
+                agent_name, agent_config, data_sample, user_question, previous_results
             )
             
             response = await self._call_claude_api(prompt)
@@ -579,10 +581,45 @@ Example: ["data_quality_audit", "exploratory_data_analysis", "customer_segmentat
 
 Response (JSON array only):"""
     
-    def _create_code_generation_prompt(self, agent_name: str, agent_config: Dict[str, Any], 
-                                     data_sample: Dict[str, Any], user_question: str) -> str:
-        """Create prompt for code generation"""
-        
+    def _create_code_generation_prompt(self, agent_name: str, agent_config: Dict[str, Any],
+                                     data_sample: Dict[str, Any], user_question: str,
+                                     previous_results: Optional[Dict[str, Any]] = None) -> str:
+        """Create prompt for code generation with optional previous agent results"""
+
+        # Build previous results context if available
+        previous_context = ""
+        if previous_results and len(previous_results) > 0:
+            previous_context = "\n\nPREVIOUS AGENT RESULTS:\n"
+            previous_context += "The following agents have already processed this data. Use their findings to inform your analysis:\n\n"
+
+            for prev_agent_name, prev_result in previous_results.items():
+                previous_context += f"--- Agent: {prev_agent_name} ---\n"
+
+                # Include execution output
+                exec_result = prev_result.get('execution_result', {})
+                output = exec_result.get('output', '')
+                if output:
+                    previous_context += f"Output: {output[:1000]}\n"  # Limit to 1000 chars
+
+                # Include UI summary if available
+                ui_summary = exec_result.get('ui_summary', '')
+                if ui_summary:
+                    previous_context += f"Summary: {ui_summary[:500]}\n"  # Limit to 500 chars
+
+                # Include output files
+                output_files = exec_result.get('output_files', [])
+                if output_files:
+                    previous_context += f"Generated Files ({len(output_files)}):\n"
+                    for file_info in output_files[:5]:  # Limit to first 5 files
+                        previous_context += f"  - {file_info.get('filename', 'unknown')}: {file_info.get('type', 'unknown')}\n"
+
+                # Include insights if available
+                insights = exec_result.get('insights') or exec_result.get('next_insights', {})
+                if insights:
+                    previous_context += f"Key Insights: {json.dumps(insights, indent=2)[:500]}\n"
+
+                previous_context += "\n"
+
         return f"""
 You are a Python data analysis expert. Generate complete, production-ready Python code for the following analysis task.
 
@@ -600,7 +637,7 @@ Sample Data:
 {json.dumps(data_sample['sample_data'], indent=2)}
 
 User Question:
-"{user_question}"
+"{user_question}"{previous_context}
 
 Requirements:
 1. Generate complete Python code that can be executed immediately
@@ -610,6 +647,7 @@ Requirements:
 5. Include error handling and logging
 6. Add concise comments explaining the analysis
 7. Do not print excessive logs; focus on artifacts (files) and clear textual summary in stdout
+8. Build upon the previous agent results when relevant to create a coherent analysis pipeline
 
 OUTPUT FORMAT (STRICT):
 Respond with EXACTLY two fenced blocks in this order and nothing else:
