@@ -836,8 +836,8 @@ claude_api:
 # Execution plan configuration
 execution:
   # Max number of agents to run in parallel within a stage (if stage.parallel is true)
-  max_parallel: 3
-  # Ordered stages. Agents within a stage may run sequentially or in parallel.
+  max_parallel: 1
+  # Ordered stages. Agents within a stage run sequentially to enable result chaining.
   stages:
     - name: "data_preparation"
       # If agents list is provided, those are run in this stage (intersection with selected agents)
@@ -846,15 +846,15 @@ execution:
       stop_on_failure: false
     - name: "exploration"
       agents: ["exploratory_data_analysis", "data_visualization"]
-      parallel: true
+      parallel: false
       stop_on_failure: false
     - name: "analysis"
       # Empty agents means: auto-include any selected agents tagged with stage: analysis
       agents: []
-      parallel: true
+      parallel: false
       stop_on_failure: false
     - name: "specialized"
       # Any remaining selected agents not assigned above
       agents: []
-      parallel: true
+      parallel: false
       stop_on_failure: false
