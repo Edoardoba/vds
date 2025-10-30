@@ -519,15 +519,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
 warnings.filterwarnings('ignore')
-import sys
-import os
-from pathlib import Path
-import traceback
-import time
+import sys as _sys
+import os as _os
+from pathlib import Path as _Path
+import traceback as _traceback
+import time as _time
 
 # Set output directory
-output_dir = Path(r"{output_dir}")
-os.chdir(output_dir)
+output_dir = _Path(r"{output_dir}")
+_os.chdir(output_dir)
 
 # Set matplotlib style
 plt.style.use('default')
@@ -541,7 +541,7 @@ plt.rcParams['savefig.bbox'] = 'tight'
 
 def _auto_save_show(*args, **kwargs):
     try:
-        filename = f"figure_{int(time.time()*1000)}.png"
+        filename = f"figure_{int(_time.time()*1000)}.png"
         plt.savefig(filename)
         plt.close()
         print(f"Saved figure: {filename}")
@@ -553,32 +553,32 @@ plt.show = _auto_save_show
 try:
     # Load the data
     data_file = r"{data_file_path}"
-    file_extension = Path(data_file).suffix.lower()
+    file_extension = _Path(data_file).suffix.lower()
     
-    print(f"Loading data from: {{data_file}}")
-    print(f"File extension: {{file_extension}}")
+    print(f"Loading data from: {data_file}")
+    print(f"File extension: {file_extension}")
     
     if file_extension == '.csv':
         df = pd.read_csv(data_file)
     elif file_extension in ['.xlsx', '.xls']:
         df = pd.read_excel(data_file)
     else:
-        raise ValueError(f"Unsupported file format: {{file_extension}}")
+        raise ValueError(f"Unsupported file format: {file_extension}")
     
-    print(f"Data loaded successfully. Shape: {{df.shape}}")
-    print(f"Columns: {{list(df.columns)}}")
-    print(f"Data types: {{df.dtypes.to_dict()}}")
+    print(f"Data loaded successfully. Shape: {df.shape}")
+    print(f"Columns: {list(df.columns)}")
+    print(f"Data types: {df.dtypes.to_dict()}")
     
     # Execute user code
 {indented_user_code}
     
-    print("\\nAnalysis completed successfully!")
+    print("\nAnalysis completed successfully!")
     
 except Exception as e:
-    print(f"Error during analysis: {{str(e)}}")
-    print("\\nFull traceback:")
-    traceback.print_exc()
-    sys.exit(1)
+    print(f"Error during analysis: {str(e)}")
+    print("\nFull traceback:")
+    _traceback.print_exc()
+    _sys.exit(1)
 '''
         
         return script_template

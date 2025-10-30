@@ -259,6 +259,9 @@ class LangGraphMultiAgentWorkflow:
             if not agents_in_stage:
                 continue
 
+            # Stage start progress update
+            await self._send_progress_update(state, stage_meta["name"], f"Starting stage: {stage_meta['name']}")
+
             if not parallel:
                 # Sequential execution
                 for agent_name in agents_in_stage:
@@ -285,6 +288,9 @@ class LangGraphMultiAgentWorkflow:
                         await _apply_result(agent_name, res)
                         state["progress"] = min(100.0, state["progress"] + progress_per_agent)
                     idx += max_parallel
+
+            # Stage end progress update
+            await self._send_progress_update(state, stage_meta["name"], f"Completed stage: {stage_meta['name']}")
 
         # Finalize
         state["progress"] = max(state["progress"], 90.0)
@@ -515,6 +521,17 @@ class LangGraphMultiAgentWorkflow:
         start_time = datetime.utcnow()
         
         try:
+            # Per-agent cache check (if DB tracking available)
+            if self._current_db_session:
+                from services.database_service import DatabaseService
+                db_service = DatabaseService()
+                data_hash = db_service.generate_data_hash(state["file_content"])
+                agent_cache_key = db_service.generate_agent_cache_key(data_hash, state["user_question"], agent_name)
+                cached = db_service.get_agent_cached_result(self._current_db_session, agent_cache_key)
+                if cached and cached.result:
+                    logger.info(f"Agent cache HIT for {agent_name}")
+                    return cached.result
+
             # Create agent execution record if DB tracking is enabled
             if self._current_analysis_id and self._current_db_session:
                 from services.database_service import DatabaseService
@@ -572,6 +589,50 @@ class LangGraphMultiAgentWorkflow:
                 "timestamp": datetime.utcnow().isoformat(),
                 "success": execution_result.get("success", False)
             }
+
+            # Generate explanation (ui_summary + next_insights) for UI and chaining
+            try:
+                from services.claude_service import ClaudeService
+                claude = ClaudeService()
+                explanation = await claude.explain_execution(
+                    agent_name=agent_name,
+                    user_question=state["user_question"],
+                    data_sample=state.get("data_sample", {}),
+                    code_snippet=code_result.get("code", ""),
+                    execution_output=execution_result.get("output", ""),
+                    output_files=execution_result.get("output_files", [])
+                )
+                result["execution_result"]["ui_summary"] = explanation.get("ui_summary", "")
+                result["execution_result"]["next_insights"] = explanation.get("next_insights", {})
+                # Merge next_insights into shared_insights for downstream agents
+                if explanation.get("next_insights"):
+                    try:
+                        state["shared_insights"].setdefault(agent_name, {})
+                        if isinstance(explanation["next_insights"], dict):
+                            state["shared_insights"][agent_name].update(explanation["next_insights"])
+                    except Exception:
+                        pass
+            except Exception as ex:
+                logger.warning(f"Explanation generation failed for {agent_name}: {ex}")
+
+            # Save per-agent cache (only if DB tracking available)
+            if self._current_db_session:
+                try:
+                    from services.database_service import DatabaseService
+                    db_service = DatabaseService()
+                    data_hash = db_service.generate_data_hash(state["file_content"])
+                    agent_cache_key = db_service.generate_agent_cache_key(data_hash, state["user_question"], agent_name)
+                    db_service.save_agent_cached_result(
+                        db=self._current_db_session,
+                        cache_key=agent_cache_key,
+                        data_hash=data_hash,
+                        user_question=state["user_question"],
+                        agent_name=agent_name,
+                        result=result,
+                        ttl_hours=24
+                    )
+                except Exception as ce:
+                    logger.warning(f"Failed to save agent cache for {agent_name}: {ce}")
             
             # Complete agent execution record
             if agent_execution_id and self._current_db_session:

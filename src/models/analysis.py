@@ -209,3 +209,41 @@ class CachedAnalysis(Base):
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "time_saved_ms": self.time_saved_ms,
         }
+
+
+class AgentCachedResult(Base):
+    """Cache for individual agent execution results"""
+    __tablename__ = "agent_cached_results"
+
+    # Primary key
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Cache key (hash of data + question + agent)
+    cache_key = Column(String(64), nullable=False, unique=True, index=True)
+
+    # Original request
+    data_hash = Column(String(64), nullable=False, index=True)
+    user_question = Column(Text, nullable=False)
+    agent_name = Column(String(100), nullable=False, index=True)
+
+    # Cached result
+    result = Column(JSON, nullable=False)
+
+    # Cache metadata
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    last_accessed = Column(DateTime, nullable=False, default=datetime.utcnow)
+    access_count = Column(Integer, nullable=False, default=0)
+    expires_at = Column(DateTime, nullable=True, index=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "cache_key": self.cache_key,
+            "data_hash": self.data_hash,
+            "user_question": self.user_question,
+            "agent_name": self.agent_name,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None,
+            "access_count": self.access_count,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+        }

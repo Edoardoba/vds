@@ -71,7 +71,7 @@ def get_allowed_origins():
     ])
     
     # For debugging: log all origins
-    logger.info(f"CORS Origins configured: {origins}")
+    # logger.info(f"CORS Origins configured: {origins}")
     
     return origins
 
@@ -342,6 +342,7 @@ async def analyze_data(
     file: UploadFile = File(...),
     question: str = Form(...),
     selected_agents: Optional[str] = Form(None),
+    bypass_cache: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -390,68 +391,90 @@ async def analyze_data(
                 selected_agents_list = None
 
         # ========== CACHING LOGIC ==========
-        # Generate cache key from file content and question
+        # Compute data hash
         data_hash = db_service.generate_data_hash(file_content)
-        cache_key = db_service.generate_cache_key(data_hash, question.strip())
+        # Parse bypass flag and global setting
+        bypass = False
+        if bypass_cache is not None:
+            bypass = str(bypass_cache).lower() in ["true", "1", "yes"]
+        if not settings.CACHE_ENABLED:
+            bypass = True
 
-        # Check cache first
-        cached_result = db_service.get_cached_analysis(db, cache_key)
-        if cached_result:
-            logger.info(f"✅ CACHE HIT - Returning cached result (saved ~{cached_result.time_saved_ms}ms)")
-            result = cached_result.cached_result
-            result["is_cached"] = True
-            result["cache_info"] = {
-                "cached_at": cached_result.created_at.isoformat(),
-                "cache_hits": cached_result.access_count,
-                "time_saved_ms": cached_result.time_saved_ms
-            }
+        # Build execution config signature to separate caches when plan changes
+        exec_signature = ""
+        try:
+            from services.claude_service import ClaudeService as _CS
+            _tmp = _CS()
+            import yaml as _yaml, hashlib as _hashlib
+            exec_signature = _hashlib.sha256(_yaml.safe_dump(_tmp.execution_config).encode()).hexdigest() if _tmp.execution_config else ""
+        except Exception:
+            exec_signature = ""
 
-            # Mark analysis as cached in database
-            if not selected_agents_list:
-                selected_agents_list = result.get("selected_agents", [])
+        cache_key = None
+        if not bypass:
+            if selected_agents_list:
+                cache_key = db_service.generate_analysis_cache_key(data_hash, question.strip(), selected_agents_list, exec_signature)
+            else:
+                cache_key = db_service.generate_cache_key(data_hash, question.strip())
 
-            analysis_record = db_service.create_analysis(
-                db=db,
-                filename=file.filename,
-                user_question=question.strip(),
-                selected_agents=selected_agents_list,
-                cache_key=cache_key
-            )
-            analysis_record.is_cached = True
-            analysis_record.status = "cached"
-            db_service.save_analysis_results(
-                db=db,
-                analysis_id=analysis_record.id,
-                data_sample=result.get("data_sample", {}),
-                agent_results=result.get("agent_results", {}),
-                report=result.get("report", {}),
-                errors=result.get("errors", [])
-            )
+            # Check cache first
+            cached_result = db_service.get_cached_analysis(db, cache_key)
+            if cached_result:
+                logger.info(f"✅ CACHE HIT - Returning cached result (saved ~{cached_result.time_saved_ms}ms)")
+                result = cached_result.cached_result
+                result["is_cached"] = True
+                result["cache_info"] = {
+                    "cached_at": cached_result.created_at.isoformat(),
+                    "cache_hits": cached_result.access_count,
+                    "time_saved_ms": cached_result.time_saved_ms
+                }
 
-            # Emit cached result via WebSocket so frontend can display it
-            try:
-                await manager.send_progress({
-                    "type": "workflow_started",
-                    "workflow_id": analysis_record.id,
-                    "filename": file.filename,
-                    "user_question": question.strip(),
-                    "progress": 0.0,
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-                
-                # Immediately mark as completed for cache hits
-                await manager.send_progress({
-                    "type": "workflow_completed",
-                    "workflow_id": analysis_record.id,
-                    "progress": 100.0,
-                    "success": True,
-                    "final_report": result.get("report"),
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-            except Exception as ws_err:
-                logger.warning(f"Failed to emit cache hit events: {ws_err}")
+                # Mark analysis as cached in database
+                if not selected_agents_list:
+                    selected_agents_list = result.get("selected_agents", [])
 
-            return clean_nan_values(result)
+                analysis_record = db_service.create_analysis(
+                    db=db,
+                    filename=file.filename,
+                    user_question=question.strip(),
+                    selected_agents=selected_agents_list,
+                    cache_key=cache_key
+                )
+                analysis_record.is_cached = True
+                analysis_record.status = "cached"
+                db_service.save_analysis_results(
+                    db=db,
+                    analysis_id=analysis_record.id,
+                    data_sample=result.get("data_sample", {}),
+                    agent_results=result.get("agent_results", {}),
+                    report=result.get("report", {}),
+                    errors=result.get("errors", [])
+                )
+
+                # Emit cached result via WebSocket so frontend can display it
+                try:
+                    await manager.send_progress({
+                        "type": "workflow_started",
+                        "workflow_id": analysis_record.id,
+                        "filename": file.filename,
+                        "user_question": question.strip(),
+                        "progress": 0.0,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    
+                    # Immediately mark as completed for cache hits
+                    await manager.send_progress({
+                        "type": "workflow_completed",
+                        "workflow_id": analysis_record.id,
+                        "progress": 100.0,
+                        "success": True,
+                        "final_report": result.get("report"),
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                except Exception as ws_err:
+                    logger.warning(f"Failed to emit cache hit events: {ws_err}")
+
+                return clean_nan_values(result)
 
         # ========== NEW ANALYSIS ==========
         logger.info(f"❌ CACHE MISS - Running new analysis")
@@ -500,16 +523,23 @@ async def analyze_data(
 
         # Save to cache for future use
         execution_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-        db_service.save_to_cache(
-            db=db,
-            cache_key=cache_key,
-            data_hash=data_hash,
-            user_question=question.strip(),
-            analysis_id=analysis_record.id,
-            result=cleaned_result,
-            ttl_hours=24,
-            execution_time_ms=int(execution_time)
-        )
+        if settings.CACHE_ENABLED:
+            final_cache_key = cache_key or db_service.generate_analysis_cache_key(
+                data_hash,
+                question.strip(),
+                cleaned_result.get("selected_agents"),
+                exec_signature
+            )
+            db_service.save_to_cache(
+                db=db,
+                cache_key=final_cache_key,
+                data_hash=data_hash,
+                user_question=question.strip(),
+                analysis_id=analysis_record.id,
+                result=cleaned_result,
+                ttl_hours=24,
+                execution_time_ms=int(execution_time)
+            )
 
         logger.info(f"✅ Analysis completed for: {file.filename} in {execution_time:.0f}ms")
 

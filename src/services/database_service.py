@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
 from models import Analysis, AgentExecution, AgentPerformance, CachedAnalysis
+from models.analysis import AgentCachedResult
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,25 @@ class DatabaseService:
     def generate_cache_key(data_hash: str, user_question: str) -> str:
         """Generate cache key from data hash and question"""
         combined = f"{data_hash}:{user_question.strip().lower()}"
+        return hashlib.sha256(combined.encode()).hexdigest()
+
+    @staticmethod
+    def generate_agent_cache_key(data_hash: str, user_question: str, agent_name: str) -> str:
+        from config import settings
+        model = getattr(settings, 'CLAUDE_MODEL', 'unknown')
+        combined = f"{data_hash}:{user_question.strip().lower()}:{agent_name.strip().lower()}:{model}"
+        return hashlib.sha256(combined.encode()).hexdigest()
+
+    @staticmethod
+    def generate_analysis_cache_key(
+        data_hash: str,
+        user_question: str,
+        selected_agents: Optional[List[str]] = None,
+        exec_signature: str = ""
+    ) -> str:
+        """Generate stronger cache key that includes agents selection and exec plan signature."""
+        sa = ",".join(sorted(selected_agents or []))
+        combined = f"{data_hash}:{user_question.strip().lower()}:{sa}:{exec_signature}"
         return hashlib.sha256(combined.encode()).hexdigest()
 
     # ========== Analysis Management ==========
@@ -368,6 +388,77 @@ class DatabaseService:
             return result
         except Exception as e:
             logger.error(f"Failed to clear expired cache: {e}")
+            db.rollback()
+            return 0
+
+    # ========== Per-Agent Caching ==========
+
+    def get_agent_cached_result(self, db: Session, cache_key: str) -> Optional[AgentCachedResult]:
+        try:
+            cached = db.query(AgentCachedResult).filter(AgentCachedResult.cache_key == cache_key).first()
+            if cached:
+                if cached.expires_at and cached.expires_at < datetime.utcnow():
+                    db.delete(cached)
+                    db.commit()
+                    return None
+                cached.last_accessed = datetime.utcnow()
+                cached.access_count += 1
+                db.commit()
+                db.refresh(cached)
+                return cached
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get agent cached result: {e}")
+            return None
+
+    def save_agent_cached_result(
+        self,
+        db: Session,
+        cache_key: str,
+        data_hash: str,
+        user_question: str,
+        agent_name: str,
+        result: Dict[str, Any],
+        ttl_hours: int = 24,
+    ) -> Optional[AgentCachedResult]:
+        try:
+            existing = db.query(AgentCachedResult).filter(AgentCachedResult.cache_key == cache_key).first()
+            if existing:
+                existing.result = result
+                existing.last_accessed = datetime.utcnow()
+                existing.access_count = 0
+                existing.expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
+                db.commit()
+                db.refresh(existing)
+                return existing
+            cached = AgentCachedResult(
+                cache_key=cache_key,
+                data_hash=data_hash,
+                user_question=user_question,
+                agent_name=agent_name,
+                result=result,
+                expires_at=datetime.utcnow() + timedelta(hours=ttl_hours)
+            )
+            db.add(cached)
+            db.commit()
+            db.refresh(cached)
+            return cached
+        except Exception as e:
+            logger.error(f"Failed to save agent cached result: {e}")
+            db.rollback()
+            return None
+
+    def clear_expired_agent_cache(self, db: Session) -> int:
+        try:
+            result = (
+                db.query(AgentCachedResult)
+                .filter(AgentCachedResult.expires_at < datetime.utcnow())
+                .delete()
+            )
+            db.commit()
+            return result
+        except Exception as e:
+            logger.error(f"Failed to clear expired agent cache: {e}")
             db.rollback()
             return 0
 

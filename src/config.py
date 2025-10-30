@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     
     # Mock Configuration
     AGENT_MOCK: bool = os.getenv("AGENT_MOCK", "false").lower() in ["true", "1", "yes"]
+    # Debug/observability
+    SHOW_AGENT_RESPONSE: bool = os.getenv("SHOW_AGENT_RESPONSE", "false").lower() in ["true", "1", "yes"]
+    # Cache controls
+    CACHE_ENABLED: bool = os.getenv("CACHE_ENABLED", "true").lower() in ["true", "1", "yes"]
+    AGENT_CACHE_ENABLED: bool = os.getenv("AGENT_CACHE_ENABLED", "true").lower() in ["true", "1", "yes"]
     
     if PYDANTIC_V2:
         model_config = ConfigDict(

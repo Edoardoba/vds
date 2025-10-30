@@ -301,6 +301,8 @@ class ClaudeService:
             
             # Parse the JSON response to get agent names
             agent_names = self._parse_agent_selection_response(response)
+            if settings.SHOW_AGENT_RESPONSE:
+                logger.info(f"Selected agents (parsed): {agent_names}")
             
             # Resolve dependencies and return agents in correct execution order
             ordered_agents = self._resolve_dependencies(agent_names)
@@ -337,6 +339,17 @@ class ClaudeService:
             
             # Parse the code generation response
             code_result = self._parse_code_generation_response(response)
+            if settings.SHOW_AGENT_RESPONSE:
+                try:
+                    code_preview = (code_result.get("code") or "")[:400]
+                    desc = code_result.get("description", "")
+                    insights = code_result.get("insights", "")
+                    logger.info(f"Agent {agent_name} code preview (<=400 chars):\n{code_preview}")
+                    logger.info(f"Agent {agent_name} description: {desc}")
+                    if insights:
+                        logger.info(f"Agent {agent_name} insights: {insights}")
+                except Exception:
+                    pass
             
             return code_result
             
@@ -392,7 +405,14 @@ class ClaudeService:
                     )
                 if response.status_code == 200:
                     result = response.json()
-                    return result["content"][0]["text"]
+                    text = result["content"][0]["text"]
+                    if settings.SHOW_AGENT_RESPONSE:
+                        try:
+                            preview = text[:2000]
+                            logger.info(f"Claude raw response (truncated):\n{preview}")
+                        except Exception:
+                            pass
+                    return text
                 else:
                     msg = f"Claude API error: {response.status_code} - {response.text[:300]}"
                     last_err = Exception(msg)
@@ -404,6 +424,92 @@ class ClaudeService:
             await asyncio.sleep(0.5 * (2 ** attempt))
         # If we reached here, all retries failed
         raise last_err if last_err else Exception("Claude API error: unknown")
+
+    async def explain_execution(
+        self,
+        agent_name: str,
+        user_question: str,
+        data_sample: Dict[str, Any],
+        code_snippet: str,
+        execution_output: str,
+        output_files: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Generate a concise UI summary and machine-passing insights from an agent's execution results.
+
+        Returns dict with keys: ui_summary (str), next_insights (dict)
+        """
+        try:
+            # Trim large outputs
+            output_preview = (execution_output or "")
+            if len(output_preview) > 4000:
+                output_preview = output_preview[:4000]
+
+            files_preview = []
+            for f in (output_files or [])[:5]:
+                files_preview.append({
+                    "filename": f.get("filename"),
+                    "type": f.get("type"),
+                    "size": f.get("size")
+                })
+
+            prompt = f"""
+You are an expert data analyst. Summarize the following agent execution for UI and for the next agent.
+
+Agent: {agent_name}
+User question: "{user_question}"
+
+Data overview:
+- File: {data_sample.get('file_info', {}).get('filename', 'unknown')}
+- Rows: {data_sample.get('total_rows', 0)}
+- Columns: {', '.join(map(str, data_sample.get('columns', [])[:20]))}
+
+Code (snippet):
+```
+{(code_snippet or '')[:800]}
+```
+
+Stdout/stderr (truncated):
+```
+{output_preview}
+```
+
+Generated files (truncated list): {files_preview}
+
+OUTPUT FORMAT (STRICT):
+Return a single YAML block with:
+```yaml
+ui_summary: |
+  # A concise textual summary (<= 8 bullets or short paragraphs) for end users
+next_insights:
+  # A compact, machine-friendly dict of key findings/metrics to pass to subsequent agents
+```
+No other text.
+"""
+
+            text = await self._call_claude_api(prompt)
+            if settings.SHOW_AGENT_RESPONSE:
+                logger.info(f"Explanator response (truncated):\n{text[:2000]}")
+
+            # Extract YAML
+            import re as _re
+            m = _re.search(r"```yaml\s*([\s\S]*?)```", text, _re.IGNORECASE)
+            payload = {"ui_summary": "", "next_insights": {}}
+            if m:
+                try:
+                    meta = yaml.safe_load(m.group(1)) or {}
+                    payload["ui_summary"] = meta.get("ui_summary", "") or ""
+                    ni = meta.get("next_insights")
+                    if isinstance(ni, dict):
+                        payload["next_insights"] = ni
+                except Exception as pe:
+                    logger.warning(f"Failed to parse explanator YAML: {pe}")
+            else:
+                # Fallback: treat the whole text as ui_summary
+                payload["ui_summary"] = text[:2000]
+            return payload
+        except Exception as e:
+            logger.error(f"explain_execution failed: {e}")
+            return {"ui_summary": "", "next_insights": {}}
     
     def _create_agent_selection_prompt(self, data_sample: Dict[str, Any], user_question: str) -> str:
         """Create prompt for agent selection"""
@@ -480,51 +586,43 @@ Response (JSON array only):"""
         return f"""
 You are a Python data analysis expert. Generate complete, production-ready Python code for the following analysis task.
 
-**Agent: {agent_name}**
+Agent: {agent_name}
 Description: {agent_config.get('description', '')}
 Specialties: {', '.join(agent_config.get('specialties', []))}
 
-**Data Information:**
+Data Information:
 - File: {data_sample['file_info']['filename']}
 - Total rows: {data_sample['total_rows']:,}
 - Columns: {', '.join(data_sample['columns'])}
 - Data types: {json.dumps(data_sample['data_types'], indent=2)}
 
-**Sample Data:**
+Sample Data:
 {json.dumps(data_sample['sample_data'], indent=2)}
 
-**User Question:**
+User Question:
 "{user_question}"
 
-**Requirements:**
+Requirements:
 1. Generate complete Python code that can be executed immediately
 2. Include all necessary imports
 3. Assume the data is available as a pandas DataFrame named 'df'
 4. Save results to appropriate files (CSV, images, etc.)
 5. Include error handling and logging
-6. Add comprehensive comments explaining the analysis
-7. Generate insights and key findings as text
-8. Return a summary of what was accomplished
+6. Add concise comments explaining the analysis
+7. Do not print excessive logs; focus on artifacts (files) and clear textual summary in stdout
 
-**Code Structure:**
-- Start with imports
-- Include data validation
-- Perform the analysis specific to this agent
-- Generate visualizations if applicable  
-- Save outputs to files
-- Return summary and insights
-
-Please respond with ONLY a JSON object containing:
-{{
-    "code": "complete Python code here",
-    "description": "What this code does",
-    "outputs": ["list of files that will be created"],
-    "insights": "Key insights and findings from this analysis"
-}}
-
-CRITICAL: The "code" field must be a VALID JSON string with ALL newlines escaped as \\n. Do NOT include actual newlines in the JSON.
-
-Response (JSON only):"""
+OUTPUT FORMAT (STRICT):
+Respond with EXACTLY two fenced blocks in this order and nothing else:
+1) A python code block containing ONLY the runnable code, no prose:
+```python
+# code here
+```
+2) (Optional) A yaml block with just a short description of what the code does:
+```yaml
+description: ...
+```
+No additional text before, between, or after the blocks.
+"""
     
     def _parse_agent_selection_response(self, response: str) -> List[str]:
         """Parse Claude's agent selection response"""
@@ -562,108 +660,107 @@ Response (JSON only):"""
             return self._get_default_agents()
     
     def _parse_code_generation_response(self, response: str) -> Dict[str, Any]:
-        """Parse Claude's code generation response"""
+        """Parse Claude's code generation response, preferring fenced code blocks.
+        YAML block (if present) is treated as description-only. Outputs/insights come from execution."""
         try:
-            # Extract JSON from response
-            response = response.strip()
-            
-            # Remove markdown code blocks if present
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
-            response = response.strip()
-            
-            start_idx = response.find('{')
-            end_idx = response.rfind('}')
-            
+            text = response.strip()
+            # Try fenced python code
+            import re as _re
+            code_match = _re.search(r"```python\s*([\s\S]*?)```", text, _re.IGNORECASE)
+            meta_match = _re.search(r"```yaml\s*([\s\S]*?)```", text, _re.IGNORECASE)
+            if code_match:
+                code = code_match.group(1).strip()
+                description = ""
+                if meta_match:
+                    try:
+                        meta = yaml.safe_load(meta_match.group(1)) or {}
+                        description = meta.get("description", "")
+                    except Exception as me:
+                        logger.warning(f"Failed to parse YAML metadata: {me}")
+                if not code:
+                    logger.warning("Empty code block detected; using fallback code")
+                    code = "print('No code generated')"
+                return {
+                    "code": code,
+                    "description": description,
+                    "outputs": [],
+                    "insights": "",
+                }
+
+            # Fallback: attempt JSON parsing (legacy)
+            response_clean = text
+            if response_clean.startswith('```json'):
+                response_clean = response_clean[7:]
+            if response_clean.startswith('```'):
+                response_clean = response_clean[3:]
+            if response_clean.endswith('```'):
+                response_clean = response_clean[:-3]
+            response_clean = response_clean.strip()
+
+            start_idx = response_clean.find('{')
+            end_idx = response_clean.rfind('}')
             if start_idx != -1 and end_idx != -1:
-                json_str = response[start_idx:end_idx+1]
-                
-                # Try to parse JSON
+                json_str = response_clean[start_idx:end_idx+1]
                 try:
                     code_result = json.loads(json_str)
-                except json.JSONDecodeError as e:
-                    # Try to fix common JSON issues
-                    logger.warning(f"JSON parse failed, attempting repair...")
+                except json.JSONDecodeError:
+                    logger.warning("JSON parse failed, attempting repair...")
                     json_str = self._repair_json(json_str)
                     code_result = json.loads(json_str)
-                
-                # Validate required fields
-                required_fields = ["code", "description", "outputs", "insights"]
-                for field in required_fields:
-                    if field not in code_result:
-                        code_result[field] = ""
-                
-                # Validate that code is not empty
-                if not code_result.get("code", "").strip():
-                    logger.warning("Generated code is empty, using fallback")
-                    code_result["code"] = """
-# Simple fallback analysis
-print("Performing basic data analysis...")
-print(f"Dataset shape: {df.shape}")
-print(f"Columns: {list(df.columns)}")
-print(f"Data types:\\n{df.dtypes}")
-print(f"Missing values:\\n{df.isnull().sum()}")
-if len(df.select_dtypes(include=[np.number]).columns) > 0:
-    print(f"Numerical summary:\\n{df.describe()}")
-"""
-                
-                return code_result
-            
-            else:
-                logger.error("Could not find JSON in code generation response")
-                return self._create_fallback_code_result("Failed to parse JSON from response")
-                
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {str(e)}")
-            # Log full response for debugging
-            logger.error(f"Full response (first 1000 chars): {response[:1000]}")
-            return self._create_fallback_code_result(f"JSON decode error: {str(e)}")
+                # Preserve description if present; ignore outputs/insights here
+                return {
+                    "code": code_result.get("code", ""),
+                    "description": code_result.get("description", ""),
+                    "outputs": [],
+                    "insights": "",
+                }
+
+            logger.error("Could not parse code generation response (no fences or JSON)")
+            return self._create_fallback_code_result("Failed to parse fenced or JSON response")
         except Exception as e:
             logger.error(f"Error parsing code generation: {str(e)}")
             return self._create_fallback_code_result(f"Parse error: {str(e)}")
+
+        finally:
+            # Optional logging of parsed structure for observability
+            if settings.SHOW_AGENT_RESPONSE:
+                try:
+                    snippet = response.strip()[:500]
+                    logger.info(f"Claude response payload (truncated 500):\n{snippet}")
+                except Exception:
+                    pass
     
     def _repair_json(self, json_str: str) -> str:
         """Attempt to repair common JSON issues with unescaped newlines"""
         import re
-        import io
-        
-        # More robust approach: handle multiline strings properly
-        # The issue is unescaped newlines inside JSON string values
-        
-        # Strategy: Find all string fields and escape newlines in them
-        lines = json_str.split('\n')
-        result_lines = []
-        in_string = False
-        escape_next = False
-        
-        for line in lines:
-            if escape_next:
-                escape_next = False
-                result_lines.append(line)
-                continue
-                
-            # Check if line is part of a multiline string
-            quote_count = line.count('"') - line.count('\\"')
-            
-            if in_string:
-                # Inside a string - escape the newline at end
-                result_lines.append(line + '\\n')
-                
-                # Check if string ends on this line
-                if quote_count % 2 == 1:
-                    in_string = False
-            else:
-                # Not in string, check if string starts
-                if quote_count % 2 == 1:
-                    in_string = True
-                
-                result_lines.append(line)
-        
-        return '\n'.join(result_lines).replace('\\n\\n', '\\n')
+        # Heuristic: specifically escape newlines inside the code field if present
+        try:
+            # Find the code field start
+            m = re.search(r'"code"\s*:\s*"', json_str)
+            if not m:
+                return json_str
+            start = m.end()
+            # Find the next unescaped quote that likely ends the code string
+            end = start
+            escaped = False
+            while end < len(json_str):
+                ch = json_str[end]
+                if ch == '\\' and not escaped:
+                    escaped = True
+                    end += 1
+                    continue
+                if ch == '"' and not escaped:
+                    break
+                escaped = False
+                end += 1
+            # Extract and escape newlines/backslashes in the code slice
+            code_slice = json_str[start:end]
+            code_slice = code_slice.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r')
+            repaired = json_str[:start] + code_slice + json_str[end:]
+            return repaired
+        except Exception:
+            # Fallback to previous simple approach: replace raw newlines with \n globally
+            return json_str.replace('\n', '\\n')
     
     def _create_fallback_code_result(self, error_msg: str) -> Dict[str, Any]:
         """Create a fallback code result when parsing fails"""
