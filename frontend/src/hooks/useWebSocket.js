@@ -14,7 +14,7 @@ const useWebSocket = (url) => {
         const ws = new WebSocket(url)
         
         ws.onopen = () => {
-          console.log('WebSocket connected')
+          console.log('✅ WebSocket connected to:', url)
           setIsConnected(true)
           setSocket(ws)
           reconnectAttempts.current = 0
@@ -23,14 +23,15 @@ const useWebSocket = (url) => {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
+            console.log('📨 WebSocket message received:', data)
             setLastMessage(data)
           } catch (error) {
-            console.error('Error parsing WebSocket message:', error)
+            console.error('Error parsing WebSocket message:', error, event.data)
           }
         }
         
-        ws.onclose = () => {
-          console.log('WebSocket disconnected')
+        ws.onclose = (event) => {
+          console.log('❌ WebSocket disconnected:', event.code, event.reason || 'No reason')
           setIsConnected(false)
           setSocket(null)
           
@@ -49,7 +50,8 @@ const useWebSocket = (url) => {
         }
         
         ws.onerror = (error) => {
-          console.error('WebSocket error:', error)
+          console.error('❌ WebSocket error:', error)
+          console.error('WebSocket URL was:', url)
         }
         
       } catch (error) {
