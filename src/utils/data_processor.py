@@ -58,14 +58,14 @@ class DataProcessor:
     def __init__(self):
         self.supported_formats = ['.csv', '.xlsx', '.xls']
     
-    def read_file_sample(self, file_content: bytes, filename: str, sample_rows: int = 5) -> Dict[str, Any]:
+    def read_file_sample(self, file_content: bytes, filename: str, sample_rows: int = 3) -> Dict[str, Any]:
         """
         Read the first few rows of a file to understand its structure
-        
+
         Args:
             file_content: Raw file content as bytes
             filename: Original filename to determine file type
-            sample_rows: Number of rows to sample (default: 5)
+            sample_rows: Number of rows to sample (default: 3)
             
         Returns:
             Dict containing sample data, columns info, and basic statistics
