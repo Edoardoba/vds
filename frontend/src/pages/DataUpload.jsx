@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -44,14 +44,14 @@ export default function DataUpload() {
   const [analysisProgress, setAnalysisProgress] = useState(null)
 
   // WebSocket connection for real-time progress
-  const getWebSocketUrl = () => {
+  const wsUrl = useMemo(() => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
-    const wsUrl = baseUrl.replace('http', 'ws') + '/ws/progress'
-    console.log('WebSocket URL:', wsUrl)
-    return wsUrl
-  }
+    const url = baseUrl.replace('http', 'ws') + '/ws/progress'
+    console.log('WebSocket URL:', url)
+    return url
+  }, [])
   
-  const { isConnected, lastMessage } = useWebSocket(getWebSocketUrl())
+  const { isConnected, lastMessage } = useWebSocket(wsUrl)
   
   // Debug WebSocket connection
   useEffect(() => {
@@ -60,58 +60,137 @@ export default function DataUpload() {
 
   // Handle WebSocket progress updates (LangGraph enhanced)
   useEffect(() => {
-    console.log('WebSocket effect triggered:', { lastMessage, showAgentTabs, isConnected })
+    console.log('WebSocket effect triggered:', { 
+      lastMessage, 
+      showAgentTabs, 
+      isConnected,
+      hasLastMessage: !!lastMessage,
+      messageType: lastMessage?.type 
+    })
     
-    if (lastMessage && showAgentTabs) {
-      console.log('Processing WebSocket message:', lastMessage)
-      try {
-        setAnalysisProgress(prev => {
-          const newProgress = { ...prev }
+    // Process message even if showAgentTabs is false initially - we'll need it when tabs open
+    if (lastMessage) {
+      console.log('Processing WebSocket message:', JSON.stringify(lastMessage, null, 2))
+      
+      // Always update progress if we have analysisProgress initialized, even if tabs aren't shown yet
+      if (showAgentTabs || analysisProgress) {
+        try {
+          setAnalysisProgress(prev => {
+            const newProgress = { ...(prev || {
+              currentAgent: null,
+              progress: 0,
+              completedAgents: [],
+              startTime: new Date().toISOString(),
+              userQuestion: query.trim()
+            }) }
         
         switch (lastMessage.type) {
           case 'workflow_started':
             newProgress.workflowId = lastMessage.workflow_id
             newProgress.filename = lastMessage.filename
-            newProgress.userQuestion = lastMessage.user_question
+            newProgress.userQuestion = lastMessage.user_question || newProgress.userQuestion
             newProgress.progress = 0
             newProgress.completedSteps = []
+            newProgress.startTime = newProgress.startTime || new Date().toISOString()
             break
             
           case 'workflow_progress':
-            newProgress.progress = lastMessage.progress
-            newProgress.completedSteps = lastMessage.completed_steps || []
-            newProgress.currentAgent = lastMessage.current_agent
-            newProgress.message = lastMessage.message
+            newProgress.progress = lastMessage.progress || newProgress.progress
+            newProgress.completedSteps = lastMessage.completed_steps || newProgress.completedSteps || []
+            newProgress.currentAgent = lastMessage.current_agent || newProgress.currentAgent
+            newProgress.message = lastMessage.message || newProgress.message
             break
             
           case 'agent_started':
-            newProgress.currentAgent = lastMessage.agent_name
-            newProgress.progress = lastMessage.progress
+            // Immediately update when agent starts
+            const agentName = lastMessage.agent_name
+            newProgress.currentAgent = agentName
+            newProgress.progress = lastMessage.progress || newProgress.progress
+            newProgress.message = `Starting ${agentName.replace(/_/g, ' ')}...`
+            
+            // Add start time for the agent
+            if (!newProgress.agentStartTimes) {
+              newProgress.agentStartTimes = {}
+            }
+            newProgress.agentStartTimes[agentName] = new Date().toISOString()
+            
+            console.log(`Agent started: ${agentName}`)
             break
             
           case 'code_generated':
-            newProgress.progress = lastMessage.progress
+            newProgress.progress = lastMessage.progress || newProgress.progress
+            newProgress.message = lastMessage.message || newProgress.message
             break
             
           case 'agent_completed':
-            // Add the result with success status
+            // Immediately update when agent completes
+            const completedAgentName = lastMessage.agent_name
             const result = {
               ...lastMessage.result,
+              agent_name: completedAgentName,
               success: lastMessage.success !== false // Default to true if not specified
             }
-            newProgress.completedAgents = [...(newProgress.completedAgents || []), result]
-            newProgress.currentAgent = null
-            newProgress.progress = lastMessage.progress
+            
+            // Remove from currentAgent if it was the current one
+            if (newProgress.currentAgent === completedAgentName) {
+              newProgress.currentAgent = null
+            }
+            
+            // Add to completed agents (check for duplicates)
+            const existingCompleted = newProgress.completedAgents || []
+            const isDuplicate = existingCompleted.some(a => a.agent_name === completedAgentName)
+            
+            if (!isDuplicate) {
+              newProgress.completedAgents = [...existingCompleted, result]
+            } else {
+              // Update existing entry
+              newProgress.completedAgents = existingCompleted.map(a => 
+                a.agent_name === completedAgentName ? result : a
+              )
+            }
+            
+            newProgress.progress = lastMessage.progress || newProgress.progress
+            newProgress.message = `Completed ${completedAgentName.replace(/_/g, ' ')}`
+            
+            // Add end time for the agent
+            if (!newProgress.agentEndTimes) {
+              newProgress.agentEndTimes = {}
+            }
+            newProgress.agentEndTimes[completedAgentName] = new Date().toISOString()
+            
+            console.log(`Agent completed: ${completedAgentName}`, result)
             break
             
           case 'agent_error':
-            newProgress.completedAgents = [...(newProgress.completedAgents || []), {
-              agent_name: lastMessage.agent_name,
+            const errorAgentName = lastMessage.agent_name
+            const errorResult = {
+              agent_name: errorAgentName,
               success: false,
               error: lastMessage.error
-            }]
-            newProgress.currentAgent = null
-            newProgress.progress = lastMessage.progress
+            }
+            
+            // Remove from currentAgent if it was the current one
+            if (newProgress.currentAgent === errorAgentName) {
+              newProgress.currentAgent = null
+            }
+            
+            // Add to completed agents (check for duplicates)
+            const existingCompletedWithError = newProgress.completedAgents || []
+            const isErrorDuplicate = existingCompletedWithError.some(a => a.agent_name === errorAgentName)
+            
+            if (!isErrorDuplicate) {
+              newProgress.completedAgents = [...existingCompletedWithError, errorResult]
+            } else {
+              // Update existing entry
+              newProgress.completedAgents = existingCompletedWithError.map(a => 
+                a.agent_name === errorAgentName ? errorResult : a
+              )
+            }
+            
+            newProgress.progress = lastMessage.progress || newProgress.progress
+            newProgress.message = `Error in ${errorAgentName.replace(/_/g, ' ')}`
+            
+            console.log(`Agent error: ${errorAgentName}`, lastMessage.error)
             break
             
           case 'workflow_error':
@@ -119,7 +198,8 @@ export default function DataUpload() {
               step: lastMessage.step,
               error: lastMessage.error
             }]
-            newProgress.progress = lastMessage.progress
+            newProgress.progress = lastMessage.progress || newProgress.progress
+            newProgress.message = lastMessage.error || 'Workflow error occurred'
             break
             
           case 'workflow_completed':
@@ -127,6 +207,7 @@ export default function DataUpload() {
             newProgress.currentAgent = null
             newProgress.success = lastMessage.success
             newProgress.finalReport = lastMessage.final_report
+            newProgress.message = 'Analysis completed!'
             
             // Set analyzing to false so the "View Full Results" button appears
             setIsAnalyzing(false)
@@ -138,12 +219,15 @@ export default function DataUpload() {
         
         return newProgress
       })
-      } catch (error) {
-        console.error('Error processing WebSocket message:', error)
-        // Don't crash the app, just log the error
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error)
+          // Don't crash the app, just log the error
+        }
+      } else {
+        console.log('Received WebSocket message but tabs not shown yet. Message:', lastMessage)
       }
     }
-  }, [lastMessage, showAgentTabs])
+  }, [lastMessage, showAgentTabs, analysisProgress, query])
 
   const onDrop = useCallback((acceptedFiles) => {
     const newFiles = acceptedFiles.map(file => ({
@@ -352,19 +436,25 @@ export default function DataUpload() {
       setShowAgentTabs(true)
       setIsAnalyzing(true)
 
-      // Initialize progress tracking
-      setAnalysisProgress({
+      // Initialize progress tracking IMMEDIATELY
+      const initialProgress = {
         currentAgent: null,
         progress: 0,
         completedAgents: [],
         startTime: new Date().toISOString(),
-        // Ensure user question is available even if WS event lacks it
-        userQuestion: (query || '').trim()
-      })
-
+        userQuestion: (query || '').trim(),
+        agentStartTimes: {},
+        agentEndTimes: {}
+      }
+      setAnalysisProgress(initialProgress)
+      
       console.log('Calling analyzeData API...')
       console.log('Selected agents:', selectedAgentNames)
       console.log('WebSocket connected:', isConnected)
+      console.log('WebSocket URL:', wsUrl)
+      
+      // Log when tabs are shown
+      console.log('Agent tabs shown, waiting for WebSocket messages...')
       
       // Call the actual API - progress will come via WebSocket
       const response = await apiEndpoints.analyzeData(
@@ -404,15 +494,16 @@ export default function DataUpload() {
       
       // Update progress to show error
       setAnalysisProgress(prev => ({
-        ...prev,
+        ...(prev || {}),
         currentAgent: null,
-        completedAgents: [...prev.completedAgents, {
+        completedAgents: [...(prev?.completedAgents || []), {
           agent_name: 'error',
           success: false,
           error: errorMessage
         }]
       }))
-    } finally {
+      
+      // Only set isAnalyzing to false on error, not on success
       setIsAnalyzing(false)
     }
   }

@@ -16,6 +16,7 @@ import {
   ArrowRight
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import toast from 'react-hot-toast'
 import WorkflowVisualization from './WorkflowVisualization'
 
 // Agent descriptions mapping (defined as a constant to avoid hoisting issues)
@@ -148,45 +149,128 @@ const AgentResultsTabs = ({
 
   // Update agent statuses based on analysis progress (LangGraph enhanced)
   useEffect(() => {
+    console.log('AgentResultsTabs - Updating agent statuses:', {
+      hasProgress: !!analysisProgress,
+      currentAgent: analysisProgress?.currentAgent,
+      completedCount: analysisProgress?.completedAgents?.length || 0,
+      progress: analysisProgress?.progress
+    })
+    
     if (analysisProgress) {
       setAgentStatuses(prev => {
         const updated = { ...prev }
+        console.log('Previous statuses:', prev)
         
-        // Update based on analysis progress - handle currentAgent properly
+        // First, ensure all selected agents have initial status
+        selectedAgents.forEach(agentName => {
+          if (!updated[agentName]) {
+            updated[agentName] = {
+              status: 'pending',
+              progress: 0,
+              result: null,
+              error: null,
+              startTime: null,
+              endTime: null
+            }
+          }
+        })
+        
+        // Update current running agent - set status to 'running'
         if (analysisProgress.currentAgent) {
           const currentAgentName = analysisProgress.currentAgent
-          if (updated[currentAgentName]) {
-            updated[currentAgentName] = {
-              ...updated[currentAgentName],
+          // Normalize agent name for matching (handle variations)
+          const matchingAgent = selectedAgents.find(a => 
+            a === currentAgentName || 
+            a.replace(/[_-]/g, '') === currentAgentName.replace(/[_-]/g, '') ||
+            a.toLowerCase() === currentAgentName.toLowerCase()
+          )
+          
+          if (matchingAgent && updated[matchingAgent]) {
+            const wasNotRunning = updated[matchingAgent].status !== 'running'
+            
+            updated[matchingAgent] = {
+              ...updated[matchingAgent],
               status: 'running',
-              progress: analysisProgress.progress || 0,
-              startTime: analysisProgress.startTime || new Date().toISOString()
+              progress: Math.min(analysisProgress.progress || 0, 99), // Don't set to 100 until completed
+              startTime: analysisProgress.agentStartTimes?.[currentAgentName] || 
+                        analysisProgress.startTime || 
+                        updated[matchingAgent].startTime || 
+                        new Date().toISOString()
+            }
+            
+            // Show toast notification when agent starts
+            if (wasNotRunning) {
+              toast.success(
+                `Started: ${matchingAgent.replace(/_/g, ' ')}`,
+                { icon: '🚀', duration: 2000 }
+              )
             }
           }
         }
 
-        // Update completed agents (deduplicate)
-        if (analysisProgress.completedAgents) {
+        // Update completed agents (handle both success and error cases)
+        if (analysisProgress.completedAgents && Array.isArray(analysisProgress.completedAgents)) {
           const seenAgents = new Set()
           analysisProgress.completedAgents.forEach(agentResult => {
-            if (agentResult.agent_name && !seenAgents.has(agentResult.agent_name)) {
-              seenAgents.add(agentResult.agent_name)
-              updated[agentResult.agent_name] = {
-                ...updated[agentResult.agent_name],
-                status: agentResult.success !== false ? 'completed' : 'error',
-                progress: 100,
-                result: agentResult,
-                error: agentResult.error || null,
-                endTime: new Date().toISOString()
+            if (agentResult.agent_name) {
+              const agentName = agentResult.agent_name
+              // Normalize agent name for matching
+              const matchingAgent = selectedAgents.find(a => 
+                a === agentName || 
+                a.replace(/[_-]/g, '') === agentName.replace(/[_-]/g, '') ||
+                a.toLowerCase() === agentName.toLowerCase()
+              )
+              
+              if (matchingAgent && !seenAgents.has(agentName)) {
+                seenAgents.add(agentName)
+                const isSuccess = agentResult.success !== false && 
+                                 (!agentResult.execution_result || agentResult.execution_result.success !== false)
+                
+                const wasNotCompleted = updated[matchingAgent]?.status !== 'completed' && 
+                                       updated[matchingAgent]?.status !== 'error'
+                
+                updated[matchingAgent] = {
+                  ...updated[matchingAgent],
+                  status: isSuccess ? 'completed' : 'error',
+                  progress: 100,
+                  result: agentResult,
+                  error: agentResult.error || (isSuccess ? null : agentResult.execution_result?.error || 'Execution failed'),
+                  endTime: analysisProgress.agentEndTimes?.[agentName] || 
+                          new Date().toISOString(),
+                  startTime: updated[matchingAgent].startTime || 
+                            analysisProgress.agentStartTimes?.[agentName] ||
+                            analysisProgress.startTime || 
+                            new Date().toISOString()
+                }
+                
+                // Show toast notification when agent completes
+                if (wasNotCompleted) {
+                  if (isSuccess) {
+                    toast.success(
+                      `Completed: ${matchingAgent.replace(/_/g, ' ')}`,
+                      { icon: '✅', duration: 2000 }
+                    )
+                  } else {
+                    toast.error(
+                      `Failed: ${matchingAgent.replace(/_/g, ' ')}`,
+                      { duration: 3000 }
+                    )
+                  }
+                }
+                
+                console.log(`Updated agent status: ${matchingAgent} -> ${isSuccess ? 'completed' : 'error'}`)
               }
             }
           })
         }
 
+        console.log('Updated statuses:', updated)
         return updated
       })
+    } else {
+      console.log('AgentResultsTabs - No analysisProgress provided')
     }
-  }, [analysisProgress])
+  }, [analysisProgress, selectedAgents])
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -230,27 +314,80 @@ const AgentResultsTabs = ({
     const status = agentStatuses[agentName]?.status || 'pending'
     const result = agentStatuses[agentName]?.result
     const error = agentStatuses[agentName]?.error
+    const startTime = agentStatuses[agentName]?.startTime
+    const endTime = agentStatuses[agentName]?.endTime
 
     if (status === 'pending') {
       return (
-        <div className="flex items-center justify-center h-64 text-gray-500">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-center h-64 text-gray-500"
+        >
           <div className="text-center">
-            <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <motion.div
+              animate={{ rotate: [0, 360] }}
+              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            >
+              <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            </motion.div>
             <p className="text-lg font-medium">Waiting to start...</p>
             <p className="text-sm">This agent will begin analysis shortly</p>
           </div>
-        </div>
+        </motion.div>
       )
     }
 
     if (status === 'running') {
       const progress = agentStatuses[agentName]?.progress || 0
+      const duration = startTime ? Math.floor((Date.now() - new Date(startTime).getTime()) / 1000) : 0
+      
       return (
-        <div className="flex items-center justify-center h-64">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex items-center justify-center h-64"
+        >
           <div className="text-center max-w-md">
-            <Loader className="w-12 h-12 mx-auto mb-4 text-blue-500 animate-spin" />
-            <p className="text-lg font-medium text-blue-700 mb-2">Analyzing...</p>
-            <p className="text-sm text-gray-600 mb-4">{(() => {
+            <div className="relative mb-4">
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.1, 1],
+                  opacity: [1, 0.8, 1]
+                }}
+                transition={{ 
+                  duration: 2, 
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              >
+                <Loader className="w-12 h-12 mx-auto text-blue-500 animate-spin" />
+              </motion.div>
+              {/* Pulsing ring around spinner */}
+              <motion.div
+                className="absolute inset-0 w-12 h-12 mx-auto border-2 border-blue-300 rounded-full"
+                animate={{ 
+                  scale: [1, 1.5, 1],
+                  opacity: [0.5, 0, 0.5]
+                }}
+                transition={{ 
+                  duration: 1.5, 
+                  repeat: Infinity,
+                  ease: "easeOut"
+                }}
+              />
+            </div>
+            
+            <motion.p 
+              key={agentName}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-lg font-medium text-blue-700 mb-2"
+            >
+              Analyzing with {agentName.replace(/_/g, ' ')}...
+            </motion.p>
+            
+            <p className="text-sm text-gray-600 mb-2">{(() => {
               try {
                 return getAgentDescription(agentName) || 'AI analysis agent'
               } catch (error) {
@@ -259,17 +396,32 @@ const AgentResultsTabs = ({
               }
             })()}</p>
             
-            <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+            {duration > 0 && (
+              <p className="text-xs text-gray-500 mb-4">Running for {duration}s</p>
+            )}
+            
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
               <motion.div
-                className="bg-blue-500 h-2 rounded-full"
+                className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 h-3 rounded-full relative"
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.3 }}
-              />
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              >
+                {/* Animated shimmer effect */}
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                  animate={{ x: ['-100%', '100%'] }}
+                  transition={{ 
+                    duration: 1.5, 
+                    repeat: Infinity,
+                    ease: "linear"
+                  }}
+                />
+              </motion.div>
             </div>
-            <p className="text-xs text-gray-500">{progress}% complete</p>
+            <p className="text-xs text-gray-500 font-medium">{progress}% complete</p>
           </div>
-        </div>
+        </motion.div>
       )
     }
 
@@ -288,7 +440,12 @@ const AgentResultsTabs = ({
 
     if (status === 'completed' && result) {
       return (
-        <div className="p-6 space-y-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="p-6 space-y-4"
+        >
           {/* Results */}
           {result.execution_result?.success && (
             <div className="space-y-4">
@@ -338,7 +495,7 @@ const AgentResultsTabs = ({
               <p className="text-sm text-red-700">{result.execution_result?.error || 'Unknown error occurred'}</p>
             </div>
           )}
-        </div>
+        </motion.div>
       )
     }
 
@@ -356,7 +513,7 @@ const AgentResultsTabs = ({
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => {
-        // Close on backdrop click
+        /* Close on backdrop click */
         if (e.target === e.currentTarget) {
           onClose()
         }
@@ -378,9 +535,21 @@ const AgentResultsTabs = ({
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Agent Analysis Progress</h2>
-                <p className="text-sm text-gray-600 truncate">
-                  {isAnalyzing ? 'Analysis in progress...' : 'Analysis completed'}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-gray-600 truncate">
+                    {isAnalyzing ? 'Analysis in progress...' : 'Analysis completed'}
+                  </p>
+                  {analysisProgress?.currentAgent && (
+                    <motion.span
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium flex items-center gap-1"
+                    >
+                      <Loader className="w-3 h-3 animate-spin" />
+                      {analysisProgress.currentAgent.replace(/_/g, ' ')}
+                    </motion.span>
+                  )}
+                </div>
               </div>
             </div>
             <button
@@ -420,22 +589,63 @@ const AgentResultsTabs = ({
             <div className="flex overflow-x-auto flex-1 scrollbar-hide">
               {selectedAgents.map((agentName, index) => {
                 const status = agentStatuses[agentName]?.status || 'pending'
+                const isCurrent = analysisProgress?.currentAgent === agentName
+                const progress = agentStatuses[agentName]?.progress || 0
+                
                 return (
-                  <button
+                  <motion.button
                     key={agentName}
                     onClick={() => setActiveTab(index)}
+                    initial={false}
+                    animate={{
+                      scale: isCurrent && status === 'running' ? [1, 1.02, 1] : 1,
+                    }}
+                    transition={{
+                      duration: 1,
+                      repeat: isCurrent && status === 'running' ? Infinity : 0,
+                      ease: "easeInOut"
+                    }}
                     className={clsx(
-                      'flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0',
+                      'flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-all duration-200 flex-shrink-0 relative',
                       activeTab === index
                         ? 'border-indigo-500 text-indigo-600 bg-indigo-50'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
+                      status === 'running' && isCurrent && 'bg-blue-50 border-blue-300',
+                      status === 'completed' && 'bg-green-50',
+                      status === 'error' && 'bg-red-50'
                     )}
                   >
+                    {/* Animated indicator for running agents */}
+                    {status === 'running' && isCurrent && (
+                      <motion.div
+                        className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                      />
+                    )}
+                    
                     {getStatusIcon(status)}
                     {getAgentIcon(agentName)}
                     <span className="max-w-[120px] truncate">{agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                    
+                    {/* Progress indicator for running agents */}
+                    {status === 'running' && (
+                      <motion.div
+                        className="w-12 h-1 bg-gray-200 rounded-full overflow-hidden"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        <motion.div
+                          className="h-full bg-blue-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          transition={{ duration: 0.3 }}
+                        />
+                      </motion.div>
+                    )}
+                    
                     <span className="text-xs text-gray-400">({index + 1}/{selectedAgents.length})</span>
-                  </button>
+                  </motion.button>
                 )
               })}
             </div>

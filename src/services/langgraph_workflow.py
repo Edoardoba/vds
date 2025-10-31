@@ -90,7 +90,7 @@ class LangGraphMultiAgentWorkflow:
         logger.info("Processing data...")
         
         # Send workflow started event (first node)
-        if self.websocket_manager and hasattr(self, '_current_analysis_id'):
+        if self.websocket_manager:
             await self.websocket_manager.send_workflow_started(
                 workflow_id=self._current_analysis_id or "",
                 filename=state.get("filename", ""),
@@ -115,15 +115,20 @@ class LangGraphMultiAgentWorkflow:
             )
             
             # Initialize shared insights
+            # Calculate shape from total_rows and columns
+            total_rows = state["data_sample"].get("total_rows", 0)
+            num_columns = len(state["data_sample"].get("columns", []))
+            data_shape = f"({total_rows}, {num_columns})" if total_rows > 0 and num_columns > 0 else "Unknown"
+            
             state["shared_insights"] = {
-                "data_shape": state["data_sample"].get("shape", "Unknown"),
+                "data_shape": data_shape,
                 "columns": state["data_sample"].get("columns", []),
                 "data_types": state["data_sample"].get("data_types", {}),
                 "missing_values": state["data_sample"].get("missing_values", {}),
                 "sample_data": state["data_sample"].get("sample_data", [])
             }
             
-            logger.info(f"Data processed successfully. Shape: {state['shared_insights']['data_shape']}")
+            logger.info(f"Data processed successfully. Shape: {data_shape}")
             
         except Exception as e:
             logger.error(f"Data processing failed: {e}")
@@ -492,27 +497,43 @@ class LangGraphMultiAgentWorkflow:
     async def _generate_report_node(self, state: AnalysisState) -> AnalysisState:
         """Generate comprehensive final report"""
         logger.info("Generating final report...")
-        
+
         state["progress"] = 100.0
         state["current_agent"] = None
         state["completed_steps"].append("report_generation")
-        
+
         await self._send_progress_update(state, "report_generation", "Generating comprehensive report...")
-        
+
         try:
             # Generate comprehensive report from all agent results
             report = await self._create_comprehensive_report(state)
             state["final_report"] = report
             state["success"] = True
-            
-            await self._send_workflow_completed(state)
-            
+
         except Exception as e:
             logger.error(f"Report generation failed: {e}")
             state["errors"].append(f"Report generation: {str(e)}")
             state["success"] = False
+            # Create a minimal report even on failure
+            state["final_report"] = {
+                "content": f"Report generation failed: {str(e)}",
+                "summary": "Analysis completed with errors",
+                "user_question": state.get("user_question", ""),
+                "data_overview": {
+                    "filename": state.get("filename", "unknown"),
+                },
+                "agents_executed": state.get("selected_agents", []),
+                "agent_results": state.get("agent_results", {}),
+                "errors": state.get("errors", []),
+                "success": False,
+                "generated_at": datetime.utcnow().isoformat(),
+                "timestamp": datetime.utcnow().isoformat()
+            }
             await self._send_error_update(state, "report_generation", str(e))
-        
+
+        # Always send workflow completed, even if report generation failed
+        await self._send_workflow_completed(state)
+
         return state
     
     async def _execute_agent(self, agent_name: str, state: AnalysisState) -> Dict[str, Any]:
@@ -1005,11 +1026,26 @@ Focus on answering the user's original question and providing actionable insight
     async def _send_workflow_completed(self, state: AnalysisState):
         """Send workflow completed notification"""
         if self.websocket_manager:
+            # Ensure final_report always exists - create minimal one if missing
+            final_report = state.get("final_report")
+            if not final_report:
+                final_report = {
+                    "content": "Analysis completed but report generation was not completed",
+                    "summary": "Analysis completed",
+                    "user_question": state.get("user_question", ""),
+                    "data_overview": state.get("data_sample", {}),
+                    "agents_executed": state.get("selected_agents", []),
+                    "success": state.get("success", False),
+                    "errors": state.get("errors", []),
+                    "generated_at": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            
             await self.websocket_manager.send_progress({
                 "type": "workflow_completed",
                 "progress": 100.0,
                 "success": state["success"],
-                "final_report": state.get("final_report"),
+                "final_report": final_report,
                 "workflow_id": self._current_analysis_id or ""
             })
     

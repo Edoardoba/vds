@@ -24,6 +24,8 @@ class LangGraphWebSocketManager:
             if self.websocket_manager:
                 await self.websocket_manager.send_progress(message)
                 logger.debug(f"Sent progress update: {message.get('type', 'unknown')}")
+            else:
+                logger.warning("WebSocket manager is None, cannot send progress update")
         except Exception as e:
             logger.error(f"Error sending progress update: {e}")
     

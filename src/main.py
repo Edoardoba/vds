@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -21,6 +21,14 @@ from utils.data_processor import clean_nan_values
 
 # Import database models and initialization
 from models import init_db, get_db
+
+# Import rate limiter
+try:
+    from services.rate_limiter import check_rate_limit
+    RATE_LIMITER_AVAILABLE = True
+except ImportError:
+    RATE_LIMITER_AVAILABLE = False
+    logger.warning("Rate limiter not available, proceeding without it")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -116,6 +124,28 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         # Don't fail startup - database is optional for basic functionality
+
+# Graceful shutdown
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup resources on shutdown"""
+    logger.info("Shutting down gracefully...")
+    try:
+        # Close any remaining WebSocket connections
+        if manager:
+            for connection in manager.active_connections.copy():
+                try:
+                    await connection.close()
+                except Exception:
+                    pass
+        
+        # Close database connections
+        from models.database import engine
+        engine.dispose()
+        
+        logger.info("Shutdown complete")
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -339,6 +369,7 @@ async def list_files(folder: Optional[str] = None):
 
 @app.post("/analyze-data")
 async def analyze_data(
+    request: Request,
     file: UploadFile = File(...),
     question: str = Form(...),
     selected_agents: Optional[str] = Form(None),
@@ -361,6 +392,23 @@ async def analyze_data(
     start_time = datetime.utcnow()
 
     try:
+        # Rate limiting (if enabled)
+        if RATE_LIMITER_AVAILABLE and settings.RATE_LIMIT_ENABLED:
+            # Get client identifier (IP address)
+            client_ip = request.client.host
+            is_allowed, remaining, reset_time = await check_rate_limit(client_ip)
+            
+            if not is_allowed:
+                logger.warning(f"Rate limit exceeded for {client_ip}")
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "error": "Rate limit exceeded",
+                        "remaining": 0,
+                        "reset_at": reset_time.isoformat()
+                    }
+                )
+        
         # Validate inputs
         if not question or question.strip() == "":
             raise ValueError("Analysis question is required")
@@ -463,12 +511,26 @@ async def analyze_data(
                     })
                     
                     # Immediately mark as completed for cache hits
+                    # Ensure final_report exists
+                    final_report = result.get("report")
+                    if not final_report:
+                        final_report = {
+                            "content": "Cached analysis result",
+                            "summary": "Analysis from cache",
+                            "user_question": question.strip(),
+                            "data_overview": result.get("data_sample", {}),
+                            "agents_executed": result.get("selected_agents", []),
+                            "success": True,
+                            "generated_at": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    
                     await manager.send_progress({
                         "type": "workflow_completed",
                         "workflow_id": analysis_record.id,
                         "progress": 100.0,
                         "success": True,
-                        "final_report": result.get("report"),
+                        "final_report": final_report,
                         "timestamp": datetime.utcnow().isoformat()
                     })
                 except Exception as ws_err:
