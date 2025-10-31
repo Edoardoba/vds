@@ -19,33 +19,34 @@ import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import WorkflowVisualization from './WorkflowVisualization'
 
-// Agent descriptions mapping (defined as a constant to avoid hoisting issues)
+// Agent descriptions mapping with fun, engaging messages
 const AGENT_DESCRIPTIONS = {
-  'data_quality_audit': 'Analyzing data quality',
-  'exploratory_data_analysis': 'Initial data exploration',
-  'data_visualization': 'Creating charts and graphs',
-  'statistical_analysis': 'Statistical computations',
-  'churn_prediction': 'Predicting customer churn',
-  'customer_segmentation': 'Segmenting customers',
-  'sales_performance_analysis': 'Analyzing sales performance',
-  'marketing_roi_analysis': 'Marketing ROI analysis',
-  'time_series_analysis': 'Time series forecasting',
-  'anomaly_detection': 'Detecting anomalies',
-  'predictive_modeling': 'Building predictive models',
-  'cohort_analysis': 'Cohort analysis',
-  'profitability_analysis': 'Profitability analysis',
-  'cash_flow_analysis': 'Cash flow analysis',
-  'employee_performance_analysis': 'Employee performance analysis',
-  'competitive_analysis': 'Competitive analysis',
-  'seasonal_business_planning': 'Seasonal planning',
-  'operational_bottleneck_detection': 'Detecting bottlenecks',
-  'customer_acquisition_cost_analysis': 'CAC analysis',
-  'ab_testing_analysis': 'A/B testing analysis'
+  'data_quality_audit': '🔍 Inspecting data quality and finding hidden issues...',
+  'data_cleaning': '🧹 Cleaning up messy data and fixing inconsistencies...',
+  'exploratory_data_analysis': '🔬 Exploring patterns and uncovering insights...',
+  'data_visualization': '📊 Creating stunning charts and visualizations...',
+  'statistical_analysis': '📈 Crunching numbers and running statistical tests...',
+  'churn_prediction': '🎯 Predicting which customers might leave...',
+  'customer_segmentation': '👥 Grouping customers into meaningful segments...',
+  'sales_performance_analysis': '💰 Analyzing sales trends and performance metrics...',
+  'marketing_roi_analysis': '📣 Calculating marketing ROI and effectiveness...',
+  'time_series_analysis': '⏰ Forecasting future trends from time series data...',
+  'anomaly_detection': '🚨 Hunting for unusual patterns and outliers...',
+  'predictive_modeling': '🤖 Building AI models to predict outcomes...',
+  'cohort_analysis': '📅 Analyzing customer cohorts over time...',
+  'profitability_analysis': '💵 Diving deep into profit margins and costs...',
+  'cash_flow_analysis': '💸 Tracking money flows and liquidity...',
+  'employee_performance_analysis': '👔 Evaluating team performance and productivity...',
+  'competitive_analysis': '⚔️ Benchmarking against competitors...',
+  'seasonal_business_planning': '🌦️ Planning for seasonal business patterns...',
+  'operational_bottleneck_detection': '🔧 Identifying process bottlenecks...',
+  'customer_acquisition_cost_analysis': '💳 Calculating customer acquisition costs...',
+  'ab_testing_analysis': '🧪 Analyzing A/B test results and winners...'
 }
 
 // Helper function to get agent descriptions (function declaration for proper hoisting)
 function getAgentDescription(agentName) {
-  return AGENT_DESCRIPTIONS[agentName] || 'AI analysis agent'
+  return AGENT_DESCRIPTIONS[agentName] || '🤖 Running AI-powered analysis...'
 }
 
 const AgentResultsTabs = ({ 
@@ -175,30 +176,62 @@ const AgentResultsTabs = ({
           }
         })
         
-        // Update current running agent - set status to 'running'
-        if (analysisProgress.currentAgent) {
-          const currentAgentName = analysisProgress.currentAgent
-          // Normalize agent name for matching (handle variations)
-          const matchingAgent = selectedAgents.find(a => 
-            a === currentAgentName || 
-            a.replace(/[_-]/g, '') === currentAgentName.replace(/[_-]/g, '') ||
-            a.toLowerCase() === currentAgentName.toLowerCase()
+        // Update running agents - set status to 'running' for all agents in runningAgents list
+        const runningAgents = analysisProgress.runningAgents || []
+        const currentAgent = analysisProgress.currentAgent
+
+        // Mark all agents in runningAgents as running
+        runningAgents.forEach(runningAgentName => {
+          const matchingAgent = selectedAgents.find(a =>
+            a === runningAgentName ||
+            a.replace(/[_-]/g, '') === runningAgentName.replace(/[_-]/g, '') ||
+            a.toLowerCase() === runningAgentName.toLowerCase()
           )
-          
+
           if (matchingAgent && updated[matchingAgent]) {
             const wasNotRunning = updated[matchingAgent].status !== 'running'
-            
+
             updated[matchingAgent] = {
               ...updated[matchingAgent],
               status: 'running',
               progress: Math.min(analysisProgress.progress || 0, 99), // Don't set to 100 until completed
-              startTime: analysisProgress.agentStartTimes?.[currentAgentName] || 
-                        analysisProgress.startTime || 
-                        updated[matchingAgent].startTime || 
+              startTime: analysisProgress.agentStartTimes?.[runningAgentName] ||
+                        analysisProgress.startTime ||
+                        updated[matchingAgent].startTime ||
                         new Date().toISOString()
             }
-            
+
             // Show toast notification when agent starts
+            if (wasNotRunning) {
+              toast.success(
+                `Started: ${matchingAgent.replace(/_/g, ' ')}`,
+                { icon: '🚀', duration: 2000 }
+              )
+            }
+          }
+        })
+
+        // Also check currentAgent for backwards compatibility
+        if (currentAgent && !runningAgents.includes(currentAgent)) {
+          const matchingAgent = selectedAgents.find(a =>
+            a === currentAgent ||
+            a.replace(/[_-]/g, '') === currentAgent.replace(/[_-]/g, '') ||
+            a.toLowerCase() === currentAgent.toLowerCase()
+          )
+
+          if (matchingAgent && updated[matchingAgent]) {
+            const wasNotRunning = updated[matchingAgent].status !== 'running'
+
+            updated[matchingAgent] = {
+              ...updated[matchingAgent],
+              status: 'running',
+              progress: Math.min(analysisProgress.progress || 0, 99),
+              startTime: analysisProgress.agentStartTimes?.[currentAgent] ||
+                        analysisProgress.startTime ||
+                        updated[matchingAgent].startTime ||
+                        new Date().toISOString()
+            }
+
             if (wasNotRunning) {
               toast.success(
                 `Started: ${matchingAgent.replace(/_/g, ' ')}`,
@@ -378,23 +411,29 @@ const AgentResultsTabs = ({
               />
             </div>
             
-            <motion.p 
+            <motion.p
               key={agentName}
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-lg font-medium text-blue-700 mb-2"
+              className="text-lg font-semibold text-blue-800 mb-3"
             >
-              Analyzing with {agentName.replace(/_/g, ' ')}...
+              {agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </motion.p>
-            
-            <p className="text-sm text-gray-600 mb-2">{(() => {
-              try {
-                return getAgentDescription(agentName) || 'AI analysis agent'
-              } catch (error) {
-                console.error('Error getting agent description:', error)
-                return 'AI analysis agent'
-              }
-            })()}</p>
+
+            <motion.p
+              className="text-base text-blue-600 mb-2 font-medium"
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            >
+              {(() => {
+                try {
+                  return getAgentDescription(agentName) || '🤖 Running AI-powered analysis...'
+                } catch (error) {
+                  console.error('Error getting agent description:', error)
+                  return '🤖 Running AI-powered analysis...'
+                }
+              })()}
+            </motion.p>
             
             {duration > 0 && (
               <p className="text-xs text-gray-500 mb-4">Running for {duration}s</p>

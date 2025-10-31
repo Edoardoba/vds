@@ -107,14 +107,22 @@ export default function DataUpload() {
             newProgress.currentAgent = agentName
             newProgress.progress = lastMessage.progress || newProgress.progress
             newProgress.message = `Starting ${agentName.replace(/_/g, ' ')}...`
-            
+
+            // Track running agents (for parallel execution)
+            if (!newProgress.runningAgents) {
+              newProgress.runningAgents = []
+            }
+            if (!newProgress.runningAgents.includes(agentName)) {
+              newProgress.runningAgents.push(agentName)
+            }
+
             // Add start time for the agent
             if (!newProgress.agentStartTimes) {
               newProgress.agentStartTimes = {}
             }
             newProgress.agentStartTimes[agentName] = new Date().toISOString()
-            
-            console.log(`Agent started: ${agentName}`)
+
+            console.log(`Agent started: ${agentName}`, { runningAgents: newProgress.runningAgents })
             break
             
           case 'code_generated':
@@ -130,35 +138,40 @@ export default function DataUpload() {
               agent_name: completedAgentName,
               success: lastMessage.success !== false // Default to true if not specified
             }
-            
+
             // Remove from currentAgent if it was the current one
             if (newProgress.currentAgent === completedAgentName) {
               newProgress.currentAgent = null
             }
-            
+
+            // Remove from runningAgents list
+            if (newProgress.runningAgents) {
+              newProgress.runningAgents = newProgress.runningAgents.filter(a => a !== completedAgentName)
+            }
+
             // Add to completed agents (check for duplicates)
             const existingCompleted = newProgress.completedAgents || []
             const isDuplicate = existingCompleted.some(a => a.agent_name === completedAgentName)
-            
+
             if (!isDuplicate) {
               newProgress.completedAgents = [...existingCompleted, result]
             } else {
               // Update existing entry
-              newProgress.completedAgents = existingCompleted.map(a => 
+              newProgress.completedAgents = existingCompleted.map(a =>
                 a.agent_name === completedAgentName ? result : a
               )
             }
-            
+
             newProgress.progress = lastMessage.progress || newProgress.progress
             newProgress.message = `Completed ${completedAgentName.replace(/_/g, ' ')}`
-            
+
             // Add end time for the agent
             if (!newProgress.agentEndTimes) {
               newProgress.agentEndTimes = {}
             }
             newProgress.agentEndTimes[completedAgentName] = new Date().toISOString()
-            
-            console.log(`Agent completed: ${completedAgentName}`, result)
+
+            console.log(`Agent completed: ${completedAgentName}`, result, { remainingRunning: newProgress.runningAgents })
             break
             
           case 'agent_error':
@@ -166,31 +179,40 @@ export default function DataUpload() {
             const errorResult = {
               agent_name: errorAgentName,
               success: false,
-              error: lastMessage.error
+              error: lastMessage.error,
+              execution_result: {
+                success: false,
+                error: lastMessage.error
+              }
             }
-            
+
             // Remove from currentAgent if it was the current one
             if (newProgress.currentAgent === errorAgentName) {
               newProgress.currentAgent = null
             }
-            
+
+            // Remove from runningAgents list
+            if (newProgress.runningAgents) {
+              newProgress.runningAgents = newProgress.runningAgents.filter(a => a !== errorAgentName)
+            }
+
             // Add to completed agents (check for duplicates)
             const existingCompletedWithError = newProgress.completedAgents || []
             const isErrorDuplicate = existingCompletedWithError.some(a => a.agent_name === errorAgentName)
-            
+
             if (!isErrorDuplicate) {
               newProgress.completedAgents = [...existingCompletedWithError, errorResult]
             } else {
               // Update existing entry
-              newProgress.completedAgents = existingCompletedWithError.map(a => 
+              newProgress.completedAgents = existingCompletedWithError.map(a =>
                 a.agent_name === errorAgentName ? errorResult : a
               )
             }
-            
+
             newProgress.progress = lastMessage.progress || newProgress.progress
             newProgress.message = `Error in ${errorAgentName.replace(/_/g, ' ')}`
-            
-            console.log(`Agent error: ${errorAgentName}`, lastMessage.error)
+
+            console.log(`Agent error: ${errorAgentName}`, lastMessage.error, { remainingRunning: newProgress.runningAgents })
             break
             
           case 'workflow_error':

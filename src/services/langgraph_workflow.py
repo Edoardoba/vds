@@ -237,6 +237,17 @@ class LangGraphMultiAgentWorkflow:
                         "agent_name": agent_name,
                         "success": False,
                         "error": str(res),
+                        "execution_result": {
+                            "success": False,
+                            "error": str(res),
+                            "output": "",
+                            "output_files": []
+                        },
+                        "code_result": {
+                            "code": "",
+                            "description": f"Failed to execute {agent_name}",
+                            "insights": f"Agent execution failed: {str(res)}"
+                        },
                         "timestamp": datetime.utcnow().isoformat()
                     }
                     state["agent_results"][agent_name] = error_result
@@ -285,14 +296,24 @@ class LangGraphMultiAgentWorkflow:
                 n = len(agents_in_stage)
                 while idx < n:
                     batch = agents_in_stage[idx: idx + max_parallel]
+                    # Send agent_started for each agent in batch and update state
                     for agent_name in batch:
+                        state["current_agent"] = agent_name  # Track the current agent
                         await self._send_agent_started(state, agent_name)
+
+                    # Execute all agents in the batch in parallel
                     tasks = [self._execute_agent(agent_name, state) for agent_name in batch]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    # Process results for each agent in the batch
                     for agent_name, res in zip(batch, results):
                         await _apply_result(agent_name, res)
                         state["progress"] = min(100.0, state["progress"] + progress_per_agent)
+
                     idx += max_parallel
+
+                # Clear current_agent after batch completes
+                state["current_agent"] = None
 
             # Stage end progress update
             await self._send_progress_update(state, stage_meta["name"], f"Completed stage: {stage_meta['name']}")
@@ -679,7 +700,7 @@ class LangGraphMultiAgentWorkflow:
             
         except Exception as e:
             logger.error(f"Error executing agent {agent_name}: {str(e)}")
-            
+
             # Record error in DB if tracking enabled
             if agent_execution_id and self._current_db_session:
                 try:
@@ -693,11 +714,23 @@ class LangGraphMultiAgentWorkflow:
                     )
                 except Exception as db_err:
                     logger.error(f"Failed to record agent execution error: {db_err}")
-            
+
+            # Return complete error result structure matching success result format
             return {
                 "agent_name": agent_name,
                 "success": False,
                 "error": str(e),
+                "execution_result": {
+                    "success": False,
+                    "error": str(e),
+                    "output": "",
+                    "output_files": []
+                },
+                "code_result": {
+                    "code": "",
+                    "description": f"Failed to execute {agent_name}",
+                    "insights": f"Agent execution failed: {str(e)}"
+                },
                 "timestamp": datetime.utcnow().isoformat()
             }
     
