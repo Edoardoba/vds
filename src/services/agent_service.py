@@ -443,77 +443,103 @@ class AgentService:
             Execution results
         """
         try:
-            # Create temporary directory for execution
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
+            # Create a persistent directory in temp_scripts for inspection
+            # Get the src directory (parent of services/)
+            src_dir = Path(__file__).parent.parent if Path(__file__).parent.name == 'services' else Path(__file__).parent
+            temp_scripts_dir = src_dir / "temp_scripts"
+            temp_scripts_dir.mkdir(exist_ok=True)
+            
+            # Create a unique directory for this execution (using timestamp)
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # microseconds to milliseconds
+            execution_dir = temp_scripts_dir / f"{agent_name}_{timestamp}"
+            execution_dir.mkdir(exist_ok=True)
+            temp_path = execution_dir
+            
+            # Save the original data file
+            file_extension = Path(data_sample['file_info']['filename']).suffix
+            data_file_path = temp_path / f"data{file_extension}"
+            
+            with open(data_file_path, 'wb') as f:
+                f.write(file_content)
                 
-                # Save the original data file
-                file_extension = Path(data_sample['file_info']['filename']).suffix
-                data_file_path = temp_path / f"data{file_extension}"
-                
-                with open(data_file_path, 'wb') as f:
-                    f.write(file_content)
-                
-                # Sanitize and validate generated code before execution
-                raw_user_code = code_result.get('code', '')
-                logger.info(f"Generated code length for {agent_name}: {len(raw_user_code)} chars")
-                sanitized_user_code = self._sanitize_user_code(raw_user_code)
+            # Sanitize and validate generated code before execution
+            raw_user_code = code_result.get('code', '')
+            logger.info(f"Generated code length for {agent_name}: {len(raw_user_code)} chars")
+            sanitized_user_code = self._sanitize_user_code(raw_user_code)
 
+            is_valid, validation_error = self._validate_generated_code(sanitized_user_code)
+            logger.info(f"Code validation for {agent_name}: valid={is_valid}")
+            if not is_valid:
+                logger.warning(f"Generated code for {agent_name} failed validation: {validation_error}")
+                # Attempt minimal newline normalization and re-validate
+                sanitized_user_code = sanitized_user_code.replace('\r\n', '\n').replace('\r', '\n')
                 is_valid, validation_error = self._validate_generated_code(sanitized_user_code)
-                logger.info(f"Code validation for {agent_name}: valid={is_valid}")
+
+                # If still invalid after retry, return error instead of executing broken code
                 if not is_valid:
-                    logger.warning(f"Generated code for {agent_name} failed validation: {validation_error}")
-                    # Attempt minimal newline normalization and re-validate
-                    sanitized_user_code = sanitized_user_code.replace('\r\n', '\n').replace('\r', '\n')
-                    is_valid, validation_error = self._validate_generated_code(sanitized_user_code)
+                    logger.error(f"Generated code for {agent_name} is invalid and cannot be executed: {validation_error}")
+                    return {
+                        "success": False,
+                        "output": "",
+                        "error": f"Code validation failed: {validation_error}. The generated code may be truncated or contain syntax errors.",
+                        "execution_time": 0,
+                        "output_files": [],
+                        "insights": code_result.get("insights", "")
+                    }
 
-                    # If still invalid after retry, return error instead of executing broken code
-                    if not is_valid:
-                        logger.error(f"Generated code for {agent_name} is invalid and cannot be executed: {validation_error}")
-                        return {
-                            "success": False,
-                            "output": "",
-                            "error": f"Code validation failed: {validation_error}. The generated code may be truncated or contain syntax errors.",
-                            "execution_time": 0,
-                            "output_files": [],
-                            "insights": code_result.get("insights", "")
-                        }
-
-                # Create the Python script
-                script_content = self._create_execution_script(
-                    sanitized_user_code, str(data_file_path), temp_path
-                )
-                
-                script_path = temp_path / f"{agent_name}_analysis.py"
-                
-                # Write script to file
-                logger.info(f"Writing script to: {script_path}")
+            # Create the Python script
+            script_content = self._create_execution_script(
+                sanitized_user_code, str(data_file_path), temp_path
+            )
+            
+            script_path = temp_path / f"{agent_name}_analysis.py"
+            
+            # Validate the final script before writing
+            is_script_valid, script_validation_error = self._validate_generated_code(script_content)
+            if not is_script_valid:
+                logger.error(f"Final script for {agent_name} failed validation: {script_validation_error}")
+                # Still save the invalid script for inspection
+                logger.info(f"Saving invalid script to {script_path} for inspection")
                 with open(script_path, 'w', encoding='utf-8') as f:
                     f.write(script_content)
-                logger.info(f"Script written successfully, size: {len(script_content)} chars")
-                
-                # Execute the script
-                logger.info(f"Starting execution of agent {agent_name}")
-                result = await self._run_python_script(script_path, temp_path)
-                
-                if not result["success"]:
-                    logger.error(f"Agent {agent_name} failed: {result.get('error', 'Unknown error')}")
-                    if result.get("output"):
-                        logger.error(f"Agent {agent_name} error output: {result['output'][:1000]}")
-                
-                # Collect generated files
-                logger.info(f"Collecting output files for {agent_name}")
-                output_files = self._collect_output_files(temp_path, agent_name)
-                logger.info(f"Found {len(output_files)} output files")
-                
                 return {
-                    "success": result["success"],
-                    "output": result["output"],
-                    "error": result.get("error"),
-                    "execution_time": result.get("execution_time"),
-                    "output_files": output_files,
+                    "success": False,
+                    "output": "",
+                    "error": f"Generated script contains syntax errors: {script_validation_error}. This usually indicates the AI-generated code was malformed or truncated. Script saved to: {script_path}",
+                    "execution_time": 0,
+                    "output_files": [],
                     "insights": code_result.get("insights", "")
                 }
+            
+            # Write script to file
+            logger.info(f"Writing script to: {script_path}")
+            with open(script_path, 'w', encoding='utf-8') as f:
+                f.write(script_content)
+            logger.info(f"Script written successfully, size: {len(script_content)} chars")
+            logger.info(f"Script saved for inspection at: {script_path}")
+            
+            # Execute the script
+            logger.info(f"Starting execution of agent {agent_name}")
+            result = await self._run_python_script(script_path, temp_path)
+            
+            if not result["success"]:
+                logger.error(f"Agent {agent_name} failed: {result.get('error', 'Unknown error')}")
+                if result.get("output"):
+                    logger.error(f"Agent {agent_name} error output: {result['output'][:1000]}")
+            
+            # Collect generated files
+            logger.info(f"Collecting output files for {agent_name}")
+            output_files = self._collect_output_files(temp_path, agent_name)
+            logger.info(f"Found {len(output_files)} output files")
+            
+            return {
+                "success": result["success"],
+                "output": result["output"],
+                "error": result.get("error"),
+                "execution_time": result.get("execution_time"),
+                "output_files": output_files,
+                "insights": code_result.get("insights", "")
+            }
                 
         except Exception as e:
             logger.error(f"Error executing code for {agent_name}: {str(e)}")
@@ -668,7 +694,15 @@ except Exception as e:
                     return False, f"Forbidden pattern detected in generated code: {pat}"
             return True, ""
         except SyntaxError as e:
-            return False, f"SyntaxError: {e.msg} at line {e.lineno}"
+            # Provide more detailed syntax error information
+            error_msg = f"SyntaxError: {e.msg}"
+            if e.lineno:
+                error_msg += f" at line {e.lineno}"
+            if e.offset:
+                error_msg += f", column {e.offset}"
+            if e.text:
+                error_msg += f"\nLine: {e.text.strip()}"
+            return False, error_msg
         except Exception as e:
             return False, f"Validation error: {str(e)}"
     
