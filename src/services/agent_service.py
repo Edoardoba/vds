@@ -4,6 +4,7 @@ Agent management and execution service
 
 import yaml
 import os
+import sys
 import json
 import logging
 import asyncio
@@ -455,9 +456,11 @@ class AgentService:
                 
                 # Sanitize and validate generated code before execution
                 raw_user_code = code_result.get('code', '')
+                logger.info(f"Generated code length for {agent_name}: {len(raw_user_code)} chars")
                 sanitized_user_code = self._sanitize_user_code(raw_user_code)
 
                 is_valid, validation_error = self._validate_generated_code(sanitized_user_code)
+                logger.info(f"Code validation for {agent_name}: valid={is_valid}")
                 if not is_valid:
                     logger.warning(f"Generated code for {agent_name} failed validation: {validation_error}")
                     # Attempt minimal newline normalization and re-validate
@@ -483,18 +486,25 @@ class AgentService:
                 
                 script_path = temp_path / f"{agent_name}_analysis.py"
                 
-                # Write script to file (no logging)
+                # Write script to file
+                logger.info(f"Writing script to: {script_path}")
                 with open(script_path, 'w', encoding='utf-8') as f:
                     f.write(script_content)
+                logger.info(f"Script written successfully, size: {len(script_content)} chars")
                 
                 # Execute the script
+                logger.info(f"Starting execution of agent {agent_name}")
                 result = await self._run_python_script(script_path, temp_path)
                 
                 if not result["success"]:
                     logger.error(f"Agent {agent_name} failed: {result.get('error', 'Unknown error')}")
+                    if result.get("output"):
+                        logger.error(f"Agent {agent_name} error output: {result['output'][:1000]}")
                 
                 # Collect generated files
+                logger.info(f"Collecting output files for {agent_name}")
                 output_files = self._collect_output_files(temp_path, agent_name)
+                logger.info(f"Found {len(output_files)} output files")
                 
                 return {
                     "success": result["success"],
@@ -522,7 +532,7 @@ class AgentService:
         # Properly indent user code to be inside the try block
         indented_user_code = self._indent_code(user_code, "    ")
         
-        script_template = f'''
+        script_template = '''
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -553,12 +563,12 @@ plt.rcParams['savefig.bbox'] = 'tight'
 
 def _auto_save_show(*args, **kwargs):
     try:
-        filename = f"figure_{int(_time.time()*1000)}.png"
+        filename = "figure_" + str(int(_time.time()*1000)) + ".png"
         plt.savefig(filename)
         plt.close()
-        print(f"Saved figure: {filename}")
+        print("Saved figure: " + filename)
     except Exception as _e:
-        print(f"Failed to save figure: {_e}")
+        print("Failed to save figure: " + str(_e))
 
 plt.show = _auto_save_show
 
@@ -567,19 +577,19 @@ try:
     data_file = r"{data_file_path}"
     file_extension = _Path(data_file).suffix.lower()
     
-    print(f"Loading data from: {data_file}")
-    print(f"File extension: {file_extension}")
+    print("Loading data from: " + str(data_file))
+    print("File extension: " + str(file_extension))
     
     if file_extension == '.csv':
         df = pd.read_csv(data_file)
     elif file_extension in ['.xlsx', '.xls']:
         df = pd.read_excel(data_file)
     else:
-        raise ValueError(f"Unsupported file format: {file_extension}")
+        raise ValueError("Unsupported file format: " + str(file_extension))
     
-    print(f"Data loaded successfully. Shape: {df.shape}")
-    print(f"Columns: {list(df.columns)}")
-    print(f"Data types: {df.dtypes.to_dict()}")
+    print("Data loaded successfully. Shape: " + str(df.shape))
+    print("Columns: " + str(list(df.columns)))
+    print("Data types: " + str(df.dtypes.to_dict()))
     
     # Execute user code
 {indented_user_code}
@@ -587,13 +597,17 @@ try:
     print("\nAnalysis completed successfully!")
     
 except Exception as e:
-    print(f"Error during analysis: {str(e)}")
+    print("Error during analysis: " + str(e))
     print("\nFull traceback:")
     _traceback.print_exc()
     _sys.exit(1)
 '''
         
-        return script_template
+        return script_template.format(
+            output_dir=output_dir,
+            data_file_path=data_file_path,
+            indented_user_code=indented_user_code
+        )
     
     def _sanitize_user_code(self, code: str) -> str:
         """Remove markdown fencing, magics, and normalize common patterns."""
@@ -711,66 +725,183 @@ except Exception as e:
     
     async def _run_python_script(self, script_path: Path, working_dir: Path) -> Dict[str, Any]:
         """Run Python script and capture output"""
+        import traceback
         try:
             start_time = datetime.utcnow()
+            logger.info(f"Executing Python script: {script_path}")
             
-            # Try different Python commands
-            python_commands = ['python', 'python3', 'py']
-            process = None
-            
-            for cmd in python_commands:
-                try:
-                    process = await asyncio.create_subprocess_exec(
-                        cmd, "-I", str(script_path),
-                        cwd=working_dir,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.STDOUT,
-                        env=os.environ.copy()
-                    )
-                    break
-                except FileNotFoundError:
-                    continue
-            
-            if process is None:
+            # Verify script exists
+            if not script_path.exists():
+                error_msg = f"Script file not found: {script_path}"
+                logger.error(error_msg)
                 return {
                     "success": False,
                     "output": "",
-                    "error": "No Python interpreter found. Tried: python, python3, py",
+                    "error": error_msg,
                     "execution_time": 0
                 }
             
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=300)  # 5 minute timeout
+            # Verify working directory exists
+            if not working_dir.exists():
+                logger.warning(f"Working directory does not exist: {working_dir}, creating it...")
+                working_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Ensure working_dir is absolute
+            working_dir = working_dir.resolve()
+            script_path = script_path.resolve()
+            
+            logger.info(f"Working directory: {working_dir}")
+            logger.info(f"Script path (absolute): {script_path}")
+            logger.info(f"sys.executable: {sys.executable}")
+            
+            # Verify Python executable exists (for sys.executable)
+            if os.path.exists(sys.executable):
+                logger.info(f"sys.executable exists: {sys.executable}")
+                # Try to get version to verify it works
+                try:
+                    import subprocess as sp
+                    result = sp.run([sys.executable, '--version'], capture_output=True, text=True, timeout=5)
+                    logger.info(f"Python version check: {result.stdout.strip()}")
+                except Exception as e:
+                    logger.warning(f"Could not verify Python version: {e}")
+            else:
+                logger.warning(f"sys.executable does not exist: {sys.executable}")
+            
+            # Try different Python commands, starting with the current interpreter
+            # This ensures we use the same Python that's running the application
+            python_commands = [sys.executable, 'python', 'python3', 'py']
+            process = None
+            used_cmd = None
+            last_error = None
+            last_traceback = None
+            
+            for cmd in python_commands:
+                try:
+                    # Convert cmd to string and verify it exists if it's a path
+                    cmd_str = str(cmd)
+                    if os.path.exists(cmd_str):
+                        logger.info(f"Trying Python command (exists): {cmd_str}")
+                    else:
+                        logger.info(f"Trying Python command (will search PATH): {cmd_str}")
+                    
+                    # Remove -I flag to allow importing site-packages (pandas, numpy, matplotlib, etc.)
+                    # Use absolute paths for better compatibility
+                    process = await asyncio.create_subprocess_exec(
+                        cmd_str, str(script_path),
+                        cwd=str(working_dir),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,  # Capture stderr separately
+                        env=os.environ.copy()
+                    )
+                    used_cmd = cmd_str
+                    logger.info(f"Started Python process with PID: {process.pid} using command: {cmd_str}")
+                    break
+                except FileNotFoundError as e:
+                    last_error = f"Python command not found: {cmd_str}"
+                    last_traceback = traceback.format_exc()
+                    logger.warning(f"{last_error} - {str(e)}")
+                    logger.error(f"Traceback for FileNotFoundError:\n{last_traceback}")
+                    continue
+                except PermissionError as e:
+                    last_error = f"Permission denied for Python command: {cmd_str}"
+                    last_traceback = traceback.format_exc()
+                    logger.warning(f"{last_error} - {str(e)}")
+                    logger.error(f"Traceback for PermissionError:\n{last_traceback}")
+                    continue
+                except Exception as e:
+                    error_details = traceback.format_exc()
+                    last_error = f"Failed to start process with {cmd_str}: {type(e).__name__}: {str(e)}"
+                    last_traceback = error_details
+                    logger.error(f"{last_error}")
+                    logger.error(f"Full traceback for {cmd_str}:\n{error_details}")
+                    continue
+            
+            if process is None:
+                commands_tried = ', '.join([str(cmd) for cmd in python_commands])
+                error_msg = f"No Python interpreter found. Tried: {commands_tried}"
+                if last_error:
+                    error_msg += f"\nLast error: {last_error}"
+                if last_traceback:
+                    logger.error(f"Last error traceback:\n{last_traceback}")
+                logger.error(error_msg)
+                # Log additional diagnostic info
+                logger.error(f"Script path: {script_path}")
+                logger.error(f"Script exists: {script_path.exists()}")
+                logger.error(f"Working dir: {working_dir}")
+                logger.error(f"Working dir exists: {working_dir.exists()}")
+                logger.error(f"sys.executable: {sys.executable}")
+                logger.error(f"sys.executable exists: {os.path.exists(sys.executable) if sys.executable else False}")
+                return {
+                    "success": False,
+                    "output": "",
+                    "error": error_msg,
+                    "execution_time": 0
+                }
+            
+            logger.info("Waiting for script execution to complete...")
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)  # 5 minute timeout
             
             end_time = datetime.utcnow()
             execution_time = (end_time - start_time).total_seconds()
             
-            output = stdout.decode('utf-8', errors='replace')
+            # Decode both stdout and stderr
+            output = stdout.decode('utf-8', errors='replace') if stdout else ""
+            stderr_output = stderr.decode('utf-8', errors='replace') if stderr else ""
+            
+            # Combine output and stderr
+            full_output = output
+            if stderr_output:
+                full_output = f"{output}\n--- STDERR ---\n{stderr_output}" if output else stderr_output
+            
+            logger.info(f"Script execution completed with return code: {process.returncode}, took {execution_time:.2f}s")
+            
+            # Log output for debugging
+            if full_output:
+                logger.debug(f"Script output (first 1000 chars): {full_output[:1000]}")
+            if process.returncode != 0:
+                logger.error(f"Script failed with return code {process.returncode}")
+                if stderr_output:
+                    logger.error(f"Script stderr (first 1000 chars): {stderr_output[:1000]}")
             
             return {
                 "success": process.returncode == 0,
-                "output": output,
-                "error": None if process.returncode == 0 else f"Script failed with code {process.returncode}",
+                "output": full_output,
+                "error": None if process.returncode == 0 else (
+                    stderr_output[:500] if stderr_output else f"Script failed with code {process.returncode}"
+                ),
                 "execution_time": execution_time
             }
             
         except asyncio.TimeoutError:
-            logger.error("Script execution timed out")
+            error_msg = "Script execution timed out after 5 minutes"
+            logger.error(error_msg)
+            # Try to kill the process if it's still running
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await process.wait()
+                    logger.info("Killed timed-out process")
+                except Exception:
+                    pass
             return {
                 "success": False,
                 "output": "",
-                "error": "Script execution timed out (5 minutes)",
+                "error": error_msg,
                 "execution_time": 300
             }
         except FileNotFoundError:
-            logger.error("Python interpreter not found")
+            error_msg = "Python interpreter not found. Make sure Python is installed and in PATH."
+            logger.error(error_msg)
             return {
                 "success": False,
                 "output": "",
-                "error": "Python interpreter not found. Make sure Python is installed and in PATH.",
+                "error": error_msg,
                 "execution_time": 0
             }
         except Exception as e:
-            logger.error(f"Error running script: {str(e)}")
+            error_traceback = traceback.format_exc()
+            error_msg = f"Script execution error: {str(e)}\n{error_traceback}"
+            logger.error(f"Error running script: {error_msg}")
             return {
                 "success": False,
                 "output": "",

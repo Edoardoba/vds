@@ -45,8 +45,20 @@ export default function DataUpload() {
 
   // WebSocket connection for real-time progress
   const wsUrl = useMemo(() => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
-    const url = baseUrl.replace('http', 'ws') + '/ws/progress'
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+    
+    // Construct WebSocket URL
+    let url
+    if (baseUrl) {
+      // If we have a base URL, convert http/https to ws/wss
+      url = baseUrl.replace(/^http/, 'ws') + '/ws/progress'
+    } else {
+      // In development, use relative URL (will use same origin)
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const host = window.location.host
+      url = `${protocol}//${host}/api/ws/progress`
+    }
+    
     console.log('WebSocket URL:', url)
     return url
   }, [])
@@ -68,20 +80,37 @@ export default function DataUpload() {
       messageType: lastMessage?.type 
     })
     
-    // Process message even if showAgentTabs is false initially - we'll need it when tabs open
+    // Process message when it arrives - always process if it's an analysis-related message
     if (lastMessage) {
       console.log('Processing WebSocket message:', JSON.stringify(lastMessage, null, 2))
       
-      // Always update progress if we have analysisProgress initialized, even if tabs aren't shown yet
-      if (showAgentTabs || analysisProgress) {
+      // Check if this is an analysis-related message
+      const isAnalysisMessage = [
+        'workflow_started',
+        'workflow_progress',
+        'agent_started',
+        'code_generated',
+        'agent_completed',
+        'agent_error',
+        'workflow_error',
+        'workflow_completed'
+      ].includes(lastMessage.type)
+      
+      // Always process analysis messages, even if tabs aren't shown yet
+      // This ensures we capture messages that arrive before React state updates
+      if (isAnalysisMessage) {
         try {
           setAnalysisProgress(prev => {
+            // Initialize if it doesn't exist
             const newProgress = { ...(prev || {
               currentAgent: null,
               progress: 0,
               completedAgents: [],
+              runningAgents: [],
               startTime: new Date().toISOString(),
-              userQuestion: query.trim()
+              userQuestion: query.trim(),
+              agentStartTimes: {},
+              agentEndTimes: {}
             }) }
         
         switch (lastMessage.type) {
@@ -241,15 +270,22 @@ export default function DataUpload() {
         
         return newProgress
       })
+          
+          // If we receive a workflow_started message and tabs aren't shown yet, show them
+          if (lastMessage.type === 'workflow_started' && !showAgentTabs) {
+            console.log('Workflow started, showing agent tabs')
+            setShowAgentTabs(true)
+            setIsAnalyzing(true)
+          }
         } catch (error) {
           console.error('Error processing WebSocket message:', error)
           // Don't crash the app, just log the error
         }
       } else {
-        console.log('Received WebSocket message but tabs not shown yet. Message:', lastMessage)
+        console.log('Received non-analysis WebSocket message:', lastMessage)
       }
     }
-  }, [lastMessage, showAgentTabs, analysisProgress, query])
+  }, [lastMessage, showAgentTabs, query])
 
   const onDrop = useCallback((acceptedFiles) => {
     const newFiles = acceptedFiles.map(file => ({

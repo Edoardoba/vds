@@ -169,14 +169,18 @@ class ConnectionManager:
             self.subscriptions[websocket].add(workflow_id)
 
     async def send_progress(self, message: dict):
+        """
+        Send progress update to all connected WebSocket clients.
+        
+        NOTE: We send to all connections regardless of workflow_id because the frontend
+        doesn't subscribe to specific workflows. The frontend will filter messages based
+        on workflow_id internally.
+        """
         target_workflow = message.get("workflow_id")
         for connection in list(self.active_connections):
             try:
-                if target_workflow:
-                    if target_workflow in self.subscriptions.get(connection, set()):
-                        await connection.send_text(json.dumps(message))
-                else:
-                    await connection.send_text(json.dumps(message))
+                # Send to all connections - frontend handles filtering
+                await connection.send_text(json.dumps(message))
             except:
                 # Remove disconnected connections
                 if connection in self.active_connections:
@@ -369,7 +373,6 @@ async def list_files(folder: Optional[str] = None):
 
 @app.post("/analyze-data")
 async def analyze_data(
-    request: Request,
     file: UploadFile = File(...),
     question: str = Form(...),
     selected_agents: Optional[str] = Form(None),
@@ -392,23 +395,6 @@ async def analyze_data(
     start_time = datetime.utcnow()
 
     try:
-        # Rate limiting (if enabled)
-        if RATE_LIMITER_AVAILABLE and settings.RATE_LIMIT_ENABLED:
-            # Get client identifier (IP address)
-            client_ip = request.client.host
-            is_allowed, remaining, reset_time = await check_rate_limit(client_ip)
-            
-            if not is_allowed:
-                logger.warning(f"Rate limit exceeded for {client_ip}")
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail={
-                        "error": "Rate limit exceeded",
-                        "remaining": 0,
-                        "reset_at": reset_time.isoformat()
-                    }
-                )
-        
         # Validate inputs
         if not question or question.strip() == "":
             raise ValueError("Analysis question is required")
@@ -509,6 +495,27 @@ async def analyze_data(
                         "progress": 0.0,
                         "timestamp": datetime.utcnow().isoformat()
                     })
+                    
+                    # Send agent completed events for cached agents so UI can display them
+                    agent_results = result.get("agent_results", {})
+                    if agent_results:
+                        # Calculate progress increment per agent
+                        total_agents = len(agent_results)
+                        progress_per_agent = 90.0 / max(total_agents, 1) if total_agents > 0 else 0
+                        current_progress = 10.0
+                        
+                        for agent_name, agent_result in agent_results.items():
+                            current_progress = min(100.0, current_progress + progress_per_agent)
+                            
+                            # Send agent completed event
+                            await manager.send_progress({
+                                "type": "agent_completed",
+                                "agent_name": agent_name,
+                                "progress": current_progress,
+                                "result": agent_result,
+                                "success": agent_result.get("success", True),
+                                "timestamp": datetime.utcnow().isoformat()
+                            })
                     
                     # Immediately mark as completed for cache hits
                     # Ensure final_report exists

@@ -74,18 +74,6 @@ function getAgentIcon(agentName) {
 }
 
 const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], className = "" }) => {
-  // Define the core workflow steps that always happen
-  const coreWorkflowSteps = [
-    {
-      id: 'data_processing',
-      name: 'Data Processing',
-      description: 'Processing  data',
-      icon: Database,
-      progress: 10
-    }
-    // Removed 'agent_selector' step since agents are already selected by user
-  ]
-
   // Create dynamic workflow steps based on selected agents and actual execution order
   const createDynamicWorkflowSteps = () => {
     const steps = []
@@ -269,18 +257,6 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
 
   return (
     <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`}>
-      <div className="p-2 border-b border-gray-100">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Analysis Workflow</h3>
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <span>Progress:</span>
-            <span className="font-medium text-indigo-600">
-              {Math.round(analysisProgress.progress || 0)}%
-            </span>
-          </div>
-        </div>
-      </div>
-      
       <div className="p-3">
         {/* Horizontal Workflow Tree */}
         <div className="relative">
@@ -339,8 +315,8 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                     </motion.div>
                     
                     {/* Step Label - Only name, no description */}
-                    <div className="mt-1 text-center w-20 min-w-[80px] pb-3">
-                      <p className={`text-xs font-medium truncate ${
+                    <div className="mt-1 text-center pb-3">
+                      <p className={`text-xs font-medium whitespace-nowrap ${
                         status === 'completed' ? 'text-green-700' :
                         status === 'running' ? 'text-blue-700' :
                         status === 'active' ? 'text-indigo-700' :
@@ -434,42 +410,6 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
             })}
           </div>
         </div>
-        
-        {/* Current Step Info - Compact */}
-        {analysisProgress.currentAgent && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-3 p-2 bg-blue-50 rounded-lg border border-blue-200"
-          >
-            <div className="flex items-center gap-2">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              >
-                <Loader className="w-3 h-3 text-blue-500" />
-              </motion.div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-blue-900 truncate">
-                  Running: {analysisProgress.currentAgent.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </p>
-                <div className="mt-1 flex items-center gap-2">
-                  <div className="flex-1 bg-blue-200 rounded-full h-1">
-                    <motion.div
-                      className="bg-blue-500 h-1 rounded-full"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${analysisProgress.progress || 0}%` }}
-                      transition={{ duration: 0.5 }}
-                    />
-                  </div>
-                  <span className="text-xs text-blue-600 font-medium">
-                    {Math.round(analysisProgress.progress || 0)}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
         
         {/* Error Display - Compact */}
         {analysisProgress.errors && analysisProgress.errors.length > 0 && (

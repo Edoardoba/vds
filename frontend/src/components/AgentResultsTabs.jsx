@@ -629,7 +629,6 @@ const AgentResultsTabs = ({
               {selectedAgents.map((agentName, index) => {
                 const status = agentStatuses[agentName]?.status || 'pending'
                 const isCurrent = analysisProgress?.currentAgent === agentName
-                const progress = agentStatuses[agentName]?.progress || 0
                 
                 return (
                   <motion.button
@@ -665,23 +664,7 @@ const AgentResultsTabs = ({
                     
                     {getStatusIcon(status)}
                     {getAgentIcon(agentName)}
-                    <span className="max-w-[120px] truncate">{agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                    
-                    {/* Progress indicator for running agents */}
-                    {status === 'running' && (
-                      <motion.div
-                        className="w-12 h-1 bg-gray-200 rounded-full overflow-hidden"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                      >
-                        <motion.div
-                          className="h-full bg-blue-500"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${progress}%` }}
-                          transition={{ duration: 0.3 }}
-                        />
-                      </motion.div>
-                    )}
+                    <span className="whitespace-nowrap">{agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
                     
                     <span className="text-xs text-gray-400">({index + 1}/{selectedAgents.length})</span>
                   </motion.button>
