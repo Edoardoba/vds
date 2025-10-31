@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     CACHE_ENABLED: bool = os.getenv("CACHE_ENABLED", "true").lower() in ["true", "1", "yes"]
     AGENT_CACHE_ENABLED: bool = os.getenv("AGENT_CACHE_ENABLED", "true").lower() in ["true", "1", "yes"]
     
+    # Rate limiting (requests per time window)
+    RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "false").lower() in ["true", "1", "yes"]
+    RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "10"))
+    RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+    
+    # Circuit breaker
+    CIRCUIT_BREAKER_ENABLED: bool = os.getenv("CIRCUIT_BREAKER_ENABLED", "false").lower() in ["true", "1", "yes"]
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = int(os.getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"))
+    CIRCUIT_BREAKER_TIMEOUT_SECONDS: int = int(os.getenv("CIRCUIT_BREAKER_TIMEOUT_SECONDS", "60"))
+    CIRCUIT_BREAKER_SUCCESS_THRESHOLD: int = int(os.getenv("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", "2"))
+    
     if PYDANTIC_V2:
         model_config = ConfigDict(
             env_file=".env",

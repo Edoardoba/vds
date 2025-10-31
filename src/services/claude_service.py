@@ -13,6 +13,14 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Import circuit breaker
+try:
+    from services.circuit_breaker import get_claude_circuit_breaker, CircuitBreakerOpenError
+    CIRCUIT_BREAKER_AVAILABLE = True
+except ImportError:
+    CIRCUIT_BREAKER_AVAILABLE = False
+    logger.warning("Circuit breaker not available, proceeding without it")
+
 
 class ClaudeService:
     """Service for interacting with Claude API"""
@@ -366,7 +374,7 @@ class ClaudeService:
     
     async def _call_claude_api(self, prompt: str) -> str:
         """
-        Make API call to Claude
+        Make API call to Claude with circuit breaker and retry logic
         
         Args:
             prompt: The prompt to send to Claude
@@ -395,37 +403,51 @@ class ClaudeService:
             ]
         }
         
-        # Simple retry with exponential backoff
-        last_err: Optional[Exception] = None
-        for attempt in range(3):
+        # Wrap API call in circuit breaker if enabled
+        async def make_api_call():
+            # Simple retry with exponential backoff
+            last_err: Optional[Exception] = None
+            for attempt in range(3):
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.post(
+                            self.base_url,
+                            headers=headers,
+                            json=payload
+                        )
+                    if response.status_code == 200:
+                        result = response.json()
+                        text = result["content"][0]["text"]
+                        if settings.SHOW_AGENT_RESPONSE:
+                            try:
+                                preview = text[:2000]
+                                logger.info(f"Claude raw response (truncated):\n{preview}")
+                            except Exception:
+                                pass
+                        return text
+                    else:
+                        msg = f"Claude API error: {response.status_code} - {response.text[:300]}"
+                        last_err = Exception(msg)
+                        logger.warning(msg)
+                except Exception as e:
+                    last_err = e
+                    logger.warning(f"Claude API call failed (attempt {attempt+1}/3): {e}")
+                # backoff
+                await asyncio.sleep(0.5 * (2 ** attempt))
+            # If we reached here, all retries failed
+            raise last_err if last_err else Exception("Claude API error: unknown")
+        
+        # Apply circuit breaker if enabled
+        if CIRCUIT_BREAKER_AVAILABLE and settings.CIRCUIT_BREAKER_ENABLED:
             try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post(
-                        self.base_url,
-                        headers=headers,
-                        json=payload
-                    )
-                if response.status_code == 200:
-                    result = response.json()
-                    text = result["content"][0]["text"]
-                    if settings.SHOW_AGENT_RESPONSE:
-                        try:
-                            preview = text[:2000]
-                            logger.info(f"Claude raw response (truncated):\n{preview}")
-                        except Exception:
-                            pass
-                    return text
-                else:
-                    msg = f"Claude API error: {response.status_code} - {response.text[:300]}"
-                    last_err = Exception(msg)
-                    logger.warning(msg)
-            except Exception as e:
-                last_err = e
-                logger.warning(f"Claude API call failed (attempt {attempt+1}/3): {e}")
-            # backoff
-            await asyncio.sleep(0.5 * (2 ** attempt))
-        # If we reached here, all retries failed
-        raise last_err if last_err else Exception("Claude API error: unknown")
+                breaker = get_claude_circuit_breaker()
+                return await breaker.call(make_api_call)
+            except CircuitBreakerOpenError as e:
+                logger.error(f"Circuit breaker open: {e}")
+                raise Exception(f"Claude API service temporarily unavailable: {str(e)}")
+        else:
+            # No circuit breaker, just call directly
+            return await make_api_call()
 
     async def explain_execution(
         self,

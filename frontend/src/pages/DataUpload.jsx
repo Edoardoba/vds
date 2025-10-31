@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -44,14 +44,14 @@ export default function DataUpload() {
   const [analysisProgress, setAnalysisProgress] = useState(null)
 
   // WebSocket connection for real-time progress
-  const getWebSocketUrl = () => {
+  const wsUrl = useMemo(() => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
-    const wsUrl = baseUrl.replace('http', 'ws') + '/ws/progress'
-    console.log('WebSocket URL:', wsUrl)
-    return wsUrl
-  }
+    const url = baseUrl.replace('http', 'ws') + '/ws/progress'
+    console.log('WebSocket URL:', url)
+    return url
+  }, [])
   
-  const { isConnected, lastMessage } = useWebSocket(getWebSocketUrl())
+  const { isConnected, lastMessage } = useWebSocket(wsUrl)
   
   // Debug WebSocket connection
   useEffect(() => {
