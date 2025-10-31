@@ -1,3 +1,0 @@
-# This file ensures the temp_scripts directory is tracked by git
-# Debug scripts and temp directories are ignored via .gitignore
-

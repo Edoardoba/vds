@@ -60,7 +60,7 @@ class DataProcessor:
     
     def read_file_sample(self, file_content: bytes, filename: str, sample_rows: int = 3) -> Dict[str, Any]:
         """
-        Read the first few rows of a file to understand its structure
+        Read a random sample of rows from a file to understand its structure
 
         Args:
             file_content: Raw file content as bytes
@@ -80,8 +80,20 @@ class DataProcessor:
             else:
                 raise ValueError(f"Unsupported file format: {file_extension}")
             
-            # Get sample rows (first N rows)
-            sample_df = df.head(sample_rows)
+            # Get random sample for variety (always include first row for headers reference)
+            if len(df) > sample_rows:
+                # Sample: first row + random rows from the rest
+                first_row_df = df.head(1)
+                remaining_df = df.iloc[1:]
+                if len(remaining_df) > 0:
+                    # Get random sample from remaining rows
+                    n_random = min(sample_rows - 1, len(remaining_df))
+                    random_sample = remaining_df.sample(n=n_random, random_state=None)  # None = truly random each time
+                    sample_df = pd.concat([first_row_df, random_sample]).reset_index(drop=True)
+                else:
+                    sample_df = first_row_df
+            else:
+                sample_df = df.head(sample_rows)
             
             # Get data info
             data_info = self._analyze_data_structure(df)

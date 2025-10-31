@@ -73,7 +73,7 @@ function getAgentIcon(agentName) {
   return AGENT_ICONS[agentName] || Brain
 }
 
-const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], className = "" }) => {
+const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], className = "", onStepClick = null }) => {
   // Create dynamic workflow steps based on selected agents and actual execution order
   const createDynamicWorkflowSteps = () => {
     const steps = []
@@ -85,6 +85,15 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
       description: 'Processing  data',
       icon: Database,
       progress: 10
+    })
+    
+    // Add Interactive Charts tab (shown while agents work)
+    steps.push({
+      id: 'interactive_charts',
+      name: 'Interactive Charts',
+      description: 'Explore data with interactive charts',
+      icon: BarChart3,
+      progress: 15
     })
     
     // Add user-selected agents as workflow steps
@@ -157,6 +166,15 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
       return 'completed'
     }
 
+    // Special handling for interactive charts - mark as completed immediately
+    if (step.id === 'interactive_charts') {
+      // Mark as completed once data processing starts (charts are ready to view)
+      if (currentProgress > 0) {
+        return 'completed'
+      }
+      return 'pending'
+    }
+    
     // Special handling for report generation step
     if (step.id === 'report_generator') {
       if (finalReport) {
@@ -274,7 +292,12 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: index * 0.1 }}
-                    className={`relative flex flex-col items-center group ${statusInfo.pulse ? 'animate-pulse' : ''}`}
+                    className={`relative flex flex-col items-center group ${statusInfo.pulse ? 'animate-pulse' : ''} ${onStepClick && step.id === 'interactive_charts' ? 'cursor-pointer' : ''}`}
+                    onClick={() => {
+                      if (onStepClick && step.id === 'interactive_charts') {
+                        onStepClick(step.id)
+                      }
+                    }}
                   >
                     {/* Step Circle */}
                     <motion.div
@@ -285,8 +308,9 @@ const WorkflowVisualization = ({ analysisProgress, selectedAgents = [], classNam
                         ${status === 'running' ? 'shadow-lg shadow-blue-200' : ''}
                         ${status === 'completed' ? 'shadow-md shadow-green-200' : ''}
                         ${status === 'active' ? 'shadow-md shadow-indigo-200' : ''}
+                        ${onStepClick && step.id === 'interactive_charts' ? 'hover:shadow-lg hover:scale-110' : ''}
                       `}
-                      whileHover={{ scale: 1.05 }}
+                      whileHover={onStepClick && step.id === 'interactive_charts' ? { scale: 1.15 } : { scale: 1.05 }}
                       animate={
                         status === 'running' 
                           ? { 

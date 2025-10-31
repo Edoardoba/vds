@@ -18,6 +18,7 @@ import {
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import WorkflowVisualization from './WorkflowVisualization'
+import InteractiveCharts from './InteractiveCharts'
 
 // Agent descriptions mapping with fun, engaging messages
 const AGENT_DESCRIPTIONS = {
@@ -54,10 +55,13 @@ const AgentResultsTabs = ({
   analysisProgress, 
   onClose,
   isAnalyzing,
-  navigate
+  navigate,
+  file = null,
+  dataPreview = null
 }) => {
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeTab, setActiveTab] = useState(-1) // Default to Interactive Charts
   const [agentStatuses, setAgentStatuses] = useState({})
+  const [showInteractiveCharts, setShowInteractiveCharts] = useState(true) // Default to showing charts
 
   // Debug logging
   console.log('AgentResultsTabs rendering with:', {
@@ -608,6 +612,12 @@ const AgentResultsTabs = ({
               analysisProgress={analysisProgress}
               selectedAgents={selectedAgents}
               className="m-4"
+              onStepClick={(stepId) => {
+                if (stepId === 'interactive_charts') {
+                  setShowInteractiveCharts(true)
+                  setActiveTab(-1) // Set to -1 to indicate charts view
+                }
+              }}
             />
           </div>
         )}
@@ -617,15 +627,48 @@ const AgentResultsTabs = ({
           <div className="flex items-center">
             {/* Previous Arrow */}
             <button
-              onClick={goToPreviousTab}
+              onClick={() => {
+                if (showInteractiveCharts && activeTab === -1) {
+                  setShowInteractiveCharts(false)
+                  setActiveTab(selectedAgents.length - 1)
+                } else {
+                  goToPreviousTab()
+                }
+              }}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
-              disabled={selectedAgents.length <= 1}
+              disabled={selectedAgents.length === 0 && !showInteractiveCharts}
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
 
             {/* Tab List - Scrollable */}
             <div className="flex overflow-x-auto flex-1 scrollbar-hide">
+              {/* Interactive Charts Tab - Always available */}
+              <motion.button
+                onClick={() => {
+                  setShowInteractiveCharts(true)
+                  setActiveTab(-1)
+                }}
+                initial={false}
+                animate={{
+                  scale: showInteractiveCharts && activeTab === -1 ? [1, 1.02, 1] : 1,
+                }}
+                transition={{
+                  duration: 1,
+                  repeat: showInteractiveCharts && activeTab === -1 ? Infinity : 0,
+                  ease: "easeInOut"
+                }}
+                className={clsx(
+                  'flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-all duration-200 flex-shrink-0 relative',
+                  showInteractiveCharts && activeTab === -1
+                    ? 'border-indigo-500 text-indigo-600 bg-indigo-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                )}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span className="whitespace-nowrap">Interactive Charts</span>
+              </motion.button>
+              
               {selectedAgents.map((agentName, index) => {
                 const status = agentStatuses[agentName]?.status || 'pending'
                 const isCurrent = analysisProgress?.currentAgent === agentName
@@ -633,7 +676,10 @@ const AgentResultsTabs = ({
                 return (
                   <motion.button
                     key={agentName}
-                    onClick={() => setActiveTab(index)}
+                    onClick={() => {
+                      setShowInteractiveCharts(false)
+                      setActiveTab(index)
+                    }}
                     initial={false}
                     animate={{
                       scale: isCurrent && status === 'running' ? [1, 1.02, 1] : 1,
@@ -645,7 +691,7 @@ const AgentResultsTabs = ({
                     }}
                     className={clsx(
                       'flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-all duration-200 flex-shrink-0 relative',
-                      activeTab === index
+                      activeTab === index && !showInteractiveCharts
                         ? 'border-indigo-500 text-indigo-600 bg-indigo-50'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
                       status === 'running' && isCurrent && 'bg-blue-50 border-blue-300',
@@ -674,9 +720,19 @@ const AgentResultsTabs = ({
 
             {/* Next Arrow */}
             <button
-              onClick={goToNextTab}
+              onClick={() => {
+                if (showInteractiveCharts && activeTab === -1) {
+                  setShowInteractiveCharts(false)
+                  setActiveTab(0)
+                } else if (activeTab === selectedAgents.length - 1) {
+                  setShowInteractiveCharts(true)
+                  setActiveTab(-1)
+                } else {
+                  goToNextTab()
+                }
+              }}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
-              disabled={selectedAgents.length <= 1}
+              disabled={selectedAgents.length === 0 && !showInteractiveCharts}
             >
               <ChevronRight className="w-5 h-5" />
             </button>
@@ -686,16 +742,34 @@ const AgentResultsTabs = ({
         {/* Tab Content - Scrollable, with padding bottom for footer */}
         <div className="flex-1 overflow-y-auto min-h-0 pb-24">
           <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-              className="min-h-full"
-            >
-              {selectedAgents[activeTab] && renderAgentResult(selectedAgents[activeTab])}
-            </motion.div>
+            {showInteractiveCharts && activeTab === -1 ? (
+              <motion.div
+                key="interactive-charts"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                className="min-h-full"
+              >
+                <InteractiveCharts 
+                  file={file}
+                  dataPreview={dataPreview}
+                  analysisProgress={analysisProgress}
+                  userQuestion={analysisProgress?.userQuestion || analysisProgress?.user_question || null}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                className="min-h-full"
+              >
+                {selectedAgents[activeTab] && renderAgentResult(selectedAgents[activeTab])}
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
 

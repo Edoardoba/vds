@@ -113,7 +113,7 @@ export const apiEndpoints = {
   },
   
   // AI Analysis endpoints
-  analyzeData: (file, question, onUploadProgress, selectedAgents = null) => {
+  analyzeData: (file, question, onUploadProgress, selectedAgents = null, signal = null) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('question', question)
@@ -121,13 +121,19 @@ export const apiEndpoints = {
       formData.append('selected_agents', JSON.stringify(selectedAgents))
     }
     
-    return api.post('/analyze-data', formData, {
+    const config = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
       onUploadProgress,
       timeout: 600000, // 10 minutes for analysis
-    })
+    }
+    
+    if (signal) {
+      config.signal = signal
+    }
+    
+    return api.post('/analyze-data', formData, config)
   },
   
   planAnalysis: (file, question, onUploadProgress) => {
@@ -144,20 +150,31 @@ export const apiEndpoints = {
     })
   },
   
-  previewData: (file, onUploadProgress) => {
+  previewData: (file, onUploadProgress, signal = null) => {
     const formData = new FormData()
     formData.append('file', file)
     
-    return api.post('/preview-data', formData, {
+    const config = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
       onUploadProgress,
-    })
+    }
+    
+    if (signal) {
+      config.signal = signal
+    }
+    
+    return api.post('/preview-data', formData, config)
   },
   
   getAvailableAgents: () => {
     return api.get('/agents/available')
+  },
+
+  // Cancel ongoing analysis
+  cancelAnalysis: (analysisId) => {
+    return api.post('/cancel-analysis', { analysis_id: analysisId })
   },
 
   // ========== NEW: History & Analytics Endpoints ==========

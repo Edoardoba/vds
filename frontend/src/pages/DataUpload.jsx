@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -42,6 +42,13 @@ export default function DataUpload() {
   const [selectedAgentNames, setSelectedAgentNames] = useState([]) // array of names
   const [showAgentTabs, setShowAgentTabs] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState(null)
+  const [currentFile, setCurrentFile] = useState(null)
+  const [dataPreview, setDataPreview] = useState(null)
+  const [currentAnalysisId, setCurrentAnalysisId] = useState(null)
+  
+  // Track ongoing requests for cancellation
+  const abortControllerRef = useRef(null)
+  const activeTimeoutRef = useRef(null)
 
   // WebSocket connection for real-time progress
   const wsUrl = useMemo(() => {
@@ -274,8 +281,14 @@ export default function DataUpload() {
           // If we receive a workflow_started message and tabs aren't shown yet, show them
           if (lastMessage.type === 'workflow_started' && !showAgentTabs) {
             console.log('Workflow started, showing agent tabs')
+            setCurrentAnalysisId(lastMessage.workflow_id) // Store analysis ID for cancellation
             setShowAgentTabs(true)
             setIsAnalyzing(true)
+          }
+          
+          // Also capture workflow_id from any message that has it
+          if (lastMessage.type === 'workflow_started') {
+            setCurrentAnalysisId(lastMessage.workflow_id)
           }
         } catch (error) {
           console.error('Error processing WebSocket message:', error)
@@ -476,6 +489,17 @@ export default function DataUpload() {
     console.log('Starting analysis with selected agents:', selectedAgentNames)
     console.log('Current state:', { showPlanModal, showAgentTabs, isAnalyzing })
     
+    // Clean up any previous requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    if (activeTimeoutRef.current) {
+      clearTimeout(activeTimeoutRef.current)
+    }
+    
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController()
+    
     if (selectedAgentNames.length === 0) {
       toast.error('Please keep at least one agent selected')
       return
@@ -486,25 +510,63 @@ export default function DataUpload() {
       return
     }
     
-    console.log('About to set showAgentTabs to true')
+    // IMMEDIATE FEEDBACK: Set states right away for instant visual feedback
+    setIsAnalyzing(true)
+    setShowPlanModal(false)
+    setShowAgentTabs(true)
+    
+    // Show toast notification that analysis is starting
+    toast.success('Starting analysis...', { 
+      icon: '🚀',
+      duration: 2000 
+    })
+    
+    // Initialize progress tracking IMMEDIATELY
+    const initialProgress = {
+      currentAgent: null,
+      progress: 0,
+      completedAgents: [],
+      startTime: new Date().toISOString(),
+      userQuestion: (query || '').trim(),
+      agentStartTimes: {},
+      agentEndTimes: {},
+      message: 'Initializing analysis...'
+    }
+    setAnalysisProgress(initialProgress)
+    
+    // Store current file for charts
+    setCurrentFile(fileToAnalyze)
+    
+    // Try to get data preview for charts (in background, don't block UI)
+    try {
+      const previewResponse = await apiEndpoints.previewData(fileToAnalyze, null, abortControllerRef.current?.signal)
+      if (previewResponse.data?.success && previewResponse.data?.preview) {
+        setDataPreview(previewResponse.data.preview)
+      }
+    } catch (error) {
+      // Don't show error if aborted
+      if (error.name !== 'AbortError' && error.code !== 'ERR_CANCELED') {
+        console.error('Failed to get data preview:', error)
+      }
+      // Don't block analysis if preview fails
+    }
 
     try {
-      // Close plan modal and show agent tabs
-      setShowPlanModal(false)
-      setShowAgentTabs(true)
-      setIsAnalyzing(true)
-
-      // Initialize progress tracking IMMEDIATELY
-      const initialProgress = {
-        currentAgent: null,
-        progress: 0,
-        completedAgents: [],
-        startTime: new Date().toISOString(),
-        userQuestion: (query || '').trim(),
-        agentStartTimes: {},
-        agentEndTimes: {}
-      }
-      setAnalysisProgress(initialProgress)
+      // Update progress to show we're starting
+      setAnalysisProgress(prev => ({
+        ...(prev || {
+          currentAgent: null,
+          progress: 0,
+          completedAgents: [],
+          startTime: new Date().toISOString(),
+          userQuestion: (query || '').trim(),
+          agentStartTimes: {},
+          agentEndTimes: {},
+          message: 'Initializing analysis...'
+        }),
+        progress: 5,
+        message: 'Connecting to analysis engine...'
+      }))
       
       console.log('Calling analyzeData API...')
       console.log('Selected agents:', selectedAgentNames)
@@ -515,13 +577,20 @@ export default function DataUpload() {
       console.log('Agent tabs shown, waiting for WebSocket messages...')
       
       // Call the actual API - progress will come via WebSocket
+      setAnalysisProgress(prev => ({
+        ...prev,
+        progress: 10,
+        message: 'Starting analysis workflow...'
+      }))
+      
       const response = await apiEndpoints.analyzeData(
         fileToAnalyze,
         query.trim(),
         (progressEvent) => {
           console.log('Analysis progress:', progressEvent)
         },
-        selectedAgentNames
+        selectedAgentNames,
+        abortControllerRef.current?.signal
       )
 
       console.log('Analysis API response:', response)
@@ -533,7 +602,7 @@ export default function DataUpload() {
       // Don't set isAnalyzing to false here - let WebSocket handle the completion
       
       // Add a fallback timeout in case WebSocket doesn't work
-      setTimeout(() => {
+      activeTimeoutRef.current = setTimeout(() => {
         if (isAnalyzing && analysisProgress && analysisProgress.progress === 0) {
           console.log('WebSocket fallback: No progress received, simulating progress')
           setAnalysisProgress(prev => ({
@@ -546,6 +615,12 @@ export default function DataUpload() {
       }, 5000) // Wait 5 seconds before fallback
 
     } catch (error) {
+      // Check if error is due to abort
+      if (error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+        console.log('Request cancelled')
+        return
+      }
+      
       console.error('Analysis error:', error)
       const errorMessage = error.response?.data?.detail || 'Analysis failed'
       toast.error(errorMessage)
@@ -574,10 +649,51 @@ export default function DataUpload() {
     setAnalysisResult(null)
   }
 
-  const closeAgentTabs = () => {
+  const closeAgentTabs = async () => {
+    console.log('Modal closed - closing agent tabs')
+    
+    // Cancel any pending axios requests
+    if (abortControllerRef.current) {
+      console.log('Aborting ongoing axios requests')
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    
+    // Clear any active timeouts
+    if (activeTimeoutRef.current) {
+      console.log('Clearing active timeout')
+      clearTimeout(activeTimeoutRef.current)
+      activeTimeoutRef.current = null
+    }
+    
+    // Cancel any pending analysis if still running
+    if (isAnalyzing && currentAnalysisId) {
+      console.log(`Cancelling analysis: ${currentAnalysisId}`)
+      try {
+        await apiEndpoints.cancelAnalysis(currentAnalysisId)
+        console.log('Analysis cancelled successfully')
+        toast.success('Analysis cancelled', { duration: 2000 })
+      } catch (error) {
+        console.error('Failed to cancel analysis:', error)
+        // Don't show error to user - modal is closing anyway
+      }
+    }
+    
     setShowAgentTabs(false)
     setAnalysisProgress(null)
+    setIsAnalyzing(false) // Reset analyzing state when modal closes
+    setCurrentAnalysisId(null) // Clear analysis ID
+    setDataPreview(null) // Clear data preview to force re-fetch
+    setCurrentFile(null) // Clear current file
   }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Reset state when component unmounts
+      setIsAnalyzing(false)
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
@@ -1096,6 +1212,8 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
               onClose={closeAgentTabs}
               isAnalyzing={isAnalyzing}
               navigate={navigate}
+              file={currentFile}
+              dataPreview={dataPreview}
             />
           </div>
         )}
@@ -1324,11 +1442,11 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-bold text-gray-900 text-sm mb-1 line-clamp-1">
+                              <h4 className="font-bold text-gray-900 text-sm mb-2 line-clamp-1">
                                 {agent.display_name || agent.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                               </h4>
                               {agent.description && (
-                                <p className="text-xs text-gray-600 line-clamp-2 leading-snug">
+                                <p className="text-xs text-gray-600 leading-relaxed whitespace-normal">
                                   {agent.description}
                                 </p>
                               )}
@@ -1373,25 +1491,27 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
                   )}
                   
                   <motion.button
-                    whileHover={{ scale: isAnalyzing ? 1 : 1.02 }}
-                    whileTap={{ scale: isAnalyzing ? 1 : 0.98 }}
+                    whileHover={{ scale: (isAnalyzing || isPlanning) ? 1 : 1.02 }}
+                    whileTap={{ scale: (isAnalyzing || isPlanning) ? 1 : 0.98 }}
                     onClick={confirmRunWithSelection}
                     disabled={isAnalyzing || isPlanning || selectedAgentNames.length === 0}
                     className={`relative px-8 py-3 text-white rounded-xl font-bold disabled:cursor-not-allowed flex items-center gap-3 overflow-hidden transition-all duration-200 shadow-lg ${
                       selectedAgentNames.length === 0
                         ? 'bg-gray-300 cursor-not-allowed'
+                        : (isAnalyzing || isPlanning)
+                        ? 'bg-gradient-to-r from-indigo-500 to-purple-500'
                         : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700'
                     }`}
                   >
                     {/* Animated gradient background */}
-                    {isAnalyzing && (
+                    {(isAnalyzing || isPlanning) && (
                       <motion.div
                         className="absolute inset-0 bg-gradient-to-r from-indigo-400 via-purple-500 via-pink-500 to-indigo-400"
                         animate={{
                           backgroundPosition: ['0% 50%', '100% 50%', '0% 50%']
                         }}
                         transition={{
-                          duration: 3,
+                          duration: 2,
                           repeat: Infinity,
                           ease: "linear"
                         }}
@@ -1401,17 +1521,39 @@ Try: 'Show me which products are trending upward this quarter' or 'What patterns
                       />
                     )}
                     
+                    {/* Pulsing ring animation when analyzing */}
+                    {(isAnalyzing || isPlanning) && (
+                      <motion.div
+                        className="absolute inset-0 rounded-xl border-2 border-white/30"
+                        animate={{
+                          scale: [1, 1.05, 1],
+                          opacity: [0.4, 0.7, 0.4]
+                        }}
+                        transition={{
+                          duration: 1.5,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                      />
+                    )}
+                    
                     <div className="relative z-10 flex items-center gap-3">
-                      {isAnalyzing ? (
+                      {(isAnalyzing || isPlanning) ? (
                         <>
+                          {/* Multi-layer spinner */}
                           <div className="relative">
                             <motion.div
                               animate={{ rotate: 360 }}
                               transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                               className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
                             />
+                            <motion.div
+                              animate={{ rotate: -360 }}
+                              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                              className="absolute inset-0 w-5 h-5 border-2 border-transparent border-r-white/50 rounded-full"
+                            />
                           </div>
-                          <span>Analyzing...</span>
+                          <span>Starting Analysis...</span>
                         </>
                       ) : (
                         <>

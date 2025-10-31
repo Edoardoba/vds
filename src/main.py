@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status, WebSocket, WebSocketDisconnect, Depends, Request
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -33,6 +34,10 @@ except ImportError:
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Pydantic models for request bodies
+class CancelAnalysisRequest(BaseModel):
+    analysis_id: str
 
 app = FastAPI(
     title="Data Upload Service", 
@@ -703,7 +708,7 @@ async def preview_data(
         data_processor = DataProcessor()
         
         preview_data = data_processor.read_file_sample(
-            file_content, file.filename, sample_rows=5
+            file_content, file.filename, sample_rows=20
         )
         
         # Add validation metadata
@@ -731,6 +736,70 @@ async def preview_data(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to preview data: {str(e)}"
+        )
+
+
+@app.post("/cancel-analysis")
+async def cancel_analysis(
+    request: CancelAnalysisRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Cancel a running analysis
+    
+    Args:
+        request: JSON body containing analysis_id
+        
+    Returns:
+        Success message
+    """
+    try:
+        analysis_id = request.analysis_id
+        
+        logger.info(f"Cancelling analysis: {analysis_id}")
+        
+        # Update analysis status to cancelled
+        analysis_record = db_service.update_analysis_status(db, analysis_id, "cancelled")
+        
+        if not analysis_record:
+            logger.warning(f"Analysis {analysis_id} not found")
+            return {
+                "success": True,
+                "message": "Analysis already cancelled or not found",
+                "analysis_id": analysis_id
+            }
+        
+        # Send cancellation notification via WebSocket
+        if manager:
+            try:
+                await manager.send_progress({
+                    "type": "workflow_cancelled",
+                    "workflow_id": analysis_id,
+                    "progress": analysis_record.progress if hasattr(analysis_record, 'progress') else None,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            except Exception as ws_err:
+                logger.warning(f"Failed to send cancellation notification: {ws_err}")
+        
+        logger.info(f"Successfully cancelled analysis: {analysis_id}")
+        
+        return {
+            "success": True,
+            "message": "Analysis cancelled successfully",
+            "analysis_id": analysis_id
+        }
+        
+    except ValueError as ve:
+        logger.error(f"Validation error in cancel_analysis: {str(ve)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+    except Exception as e:
+        logger.error(f"Cancellation failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel analysis: {str(e)}"
         )
 
 
