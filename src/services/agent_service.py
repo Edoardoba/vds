@@ -462,7 +462,19 @@ class AgentService:
                     logger.warning(f"Generated code for {agent_name} failed validation: {validation_error}")
                     # Attempt minimal newline normalization and re-validate
                     sanitized_user_code = sanitized_user_code.replace('\r\n', '\n').replace('\r', '\n')
-                    is_valid, _ = self._validate_generated_code(sanitized_user_code)
+                    is_valid, validation_error = self._validate_generated_code(sanitized_user_code)
+
+                    # If still invalid after retry, return error instead of executing broken code
+                    if not is_valid:
+                        logger.error(f"Generated code for {agent_name} is invalid and cannot be executed: {validation_error}")
+                        return {
+                            "success": False,
+                            "output": "",
+                            "error": f"Code validation failed: {validation_error}. The generated code may be truncated or contain syntax errors.",
+                            "execution_time": 0,
+                            "output_files": [],
+                            "insights": code_result.get("insights", "")
+                        }
 
                 # Create the Python script
                 script_content = self._create_execution_script(
