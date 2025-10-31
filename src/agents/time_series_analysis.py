@@ -148,12 +148,10 @@ Respond with ONLY a JSON object:
             column_score = 0.8
         
         # Check for time-related values in data types
-        date_types = ['datetime64', 'date', 'timestamp']
-        has_date_type = any(date_type in str(dtype).lower() 
-                           for dtype in data_columns)
-        
-        if has_date_type:
-            column_score = max(column_score, 0.9)
+        # Note: data_columns is a list of column names, not data types
+        # This check looks for date-related keywords in column names (already done above)
+        # If we had access to actual data types, we'd check them here
+        # For now, rely on column name patterns which are already checked above
         
         # Combined confidence score
         confidence = (keyword_score * 0.6) + (column_score * 0.4)

@@ -419,10 +419,16 @@ async def analyze_data(
             try:
                 import json as _json
                 parsed = _json.loads(selected_agents)
-                if isinstance(parsed, list):
+                if isinstance(parsed, list) and len(parsed) > 0:
                     selected_agents_list = [str(a) for a in parsed]
-            except Exception:
+                    logger.info(f"Parsed selected_agents from frontend: {selected_agents_list}")
+                else:
+                    logger.warning(f"Selected agents is empty list or not a list: {parsed}")
+            except Exception as e:
+                logger.warning(f"Failed to parse selected_agents JSON: {e}, raw value: {selected_agents}")
                 selected_agents_list = None
+        else:
+            logger.info("No selected_agents provided in request, will use smart selection")
 
         # ========== CACHING LOGIC ==========
         # Compute data hash

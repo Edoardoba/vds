@@ -432,8 +432,9 @@ class ClaudeService:
                 except Exception as e:
                     last_err = e
                     logger.warning(f"Claude API call failed (attempt {attempt+1}/3): {e}")
-                # backoff
-                await asyncio.sleep(0.5 * (2 ** attempt))
+                # Exponential backoff (only if not last attempt)
+                if attempt < 2:  # Don't sleep after last attempt
+                    await asyncio.sleep(0.5 * (2 ** attempt))
             # If we reached here, all retries failed
             raise last_err if last_err else Exception("Claude API error: unknown")
         

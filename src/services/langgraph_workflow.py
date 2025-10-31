@@ -148,17 +148,21 @@ class LangGraphMultiAgentWorkflow:
         
         try:
             # If agents were already provided, use them
-            if state["selected_agents"] and len(state["selected_agents"]) > 0:
-                logger.info(f"Using provided agents: {state['selected_agents']}")
+            provided_agents = state.get("selected_agents", [])
+            if provided_agents and isinstance(provided_agents, list) and len(provided_agents) > 0:
+                logger.info(f"Using provided agents from frontend: {provided_agents}")
+                # Ensure we use the provided agents (don't overwrite)
+                state["selected_agents"] = provided_agents
             else:
                 # Use Claude to select agents
+                logger.info("No agents provided, using Claude to select agents automatically")
                 from services.claude_service import ClaudeService
                 claude_service = ClaudeService()
                 state["selected_agents"] = await claude_service.select_agents(
                     state["data_sample"], 
                     state["user_question"]
                 )
-                logger.info(f"Selected agents: {state['selected_agents']}")
+                logger.info(f"Claude selected agents: {state['selected_agents']}")
             
         except Exception as e:
             logger.error(f"Agent selection failed: {e}")
@@ -749,8 +753,8 @@ class LangGraphMultiAgentWorkflow:
         try:
             logger.info(f"Mock execution for agent: {agent_name}")
             
-            # Wait 3 seconds to simulate processing
-            await asyncio.sleep(3)
+            # Minimal delay for mock execution (reduced from 3s to 0.1s for faster testing)
+            await asyncio.sleep(0.1)
             
             # Create mock result
             mock_result = {
@@ -1098,13 +1102,20 @@ Focus on answering the user's original question and providing actionable insight
         self._current_analysis_id = analysis_id
         
         # Initialize state (without db_session - not serializable)
+        # Preserve selected_agents if provided, otherwise use empty list
+        agents_list = selected_agents if selected_agents and isinstance(selected_agents, list) else []
+        if agents_list:
+            logger.info(f"Initializing workflow with {len(agents_list)} selected agents: {agents_list}")
+        else:
+            logger.info("Initializing workflow without selected agents - will select automatically")
+        
         initial_state = AnalysisState(
             file_content=file_content,
             filename=filename,
             user_question=user_question,
             data_sample={},
             processed_data=None,
-            selected_agents=selected_agents or [],
+            selected_agents=agents_list,
             agent_results={},
             current_agent=None,
             progress=0.0,
