@@ -53,8 +53,9 @@ class Settings(BaseSettings):
     AGENT_CACHE_ENABLED: bool = os.getenv("AGENT_CACHE_ENABLED", "true").lower() in ["true", "1", "yes"]
     
     # Rate limiting (requests per time window)
-    RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "false").lower() in ["true", "1", "yes"]
-    RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "10"))
+    # SECURITY: Enable rate limiting to prevent API abuse and cost overruns
+    RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ["true", "1", "yes"]  # Changed default to TRUE
+    RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "5"))  # Reduced from 10 to 5 for expensive analysis endpoint
     RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
     
     # Circuit breaker

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status, WebSocket, WebSocketDisconnect, Depends, Request
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 from typing import Optional
@@ -97,6 +98,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add GZip compression for large JSON responses
+# This reduces bandwidth by 60-80% for analysis results
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1000,  # Only compress responses > 1KB
+    compresslevel=6     # Balance between speed and compression (1-9, default 6)
+)
+logger.info("GZip compression enabled for responses > 1KB")
+
 # Add request logging middleware for debugging CORS
 @app.middleware("http")
 async def log_requests(request, call_next):
@@ -176,22 +186,30 @@ class ConnectionManager:
     async def send_progress(self, message: dict):
         """
         Send progress update to all connected WebSocket clients.
-        
+
         NOTE: We send to all connections regardless of workflow_id because the frontend
         doesn't subscribe to specific workflows. The frontend will filter messages based
         on workflow_id internally.
         """
         target_workflow = message.get("workflow_id")
+        disconnected = []  # Track disconnected connections for batch cleanup
+
         for connection in list(self.active_connections):
             try:
                 # Send to all connections - frontend handles filtering
                 await connection.send_text(json.dumps(message))
-            except:
-                # Remove disconnected connections
-                if connection in self.active_connections:
-                    self.active_connections.remove(connection)
-                if connection in self.subscriptions:
-                    del self.subscriptions[connection]
+            except Exception as e:
+                # Log the error and mark for cleanup
+                logger.warning(f"WebSocket send failed, marking connection for cleanup: {type(e).__name__}")
+                disconnected.append(connection)
+
+        # Batch cleanup of disconnected connections
+        # This prevents race conditions and ensures proper cleanup
+        for conn in disconnected:
+            try:
+                self.disconnect(conn)  # Use the disconnect method for proper cleanup
+            except Exception as cleanup_error:
+                logger.error(f"Error during connection cleanup: {cleanup_error}")
 
 manager = ConnectionManager()
 
@@ -209,19 +227,37 @@ async def root():
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time analysis progress updates"""
     await manager.connect(websocket)
+    logger.info(f"WebSocket connected. Total connections: {len(manager.active_connections)}")
+
     try:
         while True:
             # Clients may send subscription messages: {"subscribe": "<analysis_id>"}
-            raw = await websocket.receive_text()
+            # or keepalive ping messages
             try:
-                msg = json.loads(raw)
-                if isinstance(msg, dict) and "subscribe" in msg:
-                    manager.subscribe(websocket, str(msg.get("subscribe")))
-            except Exception:
-                # Ignore non-JSON keepalive
-                pass
+                # Set a timeout for receiving messages to detect stale connections
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=300.0)  # 5 min timeout
+                try:
+                    msg = json.loads(raw)
+                    if isinstance(msg, dict):
+                        if "subscribe" in msg:
+                            manager.subscribe(websocket, str(msg.get("subscribe")))
+                        elif "ping" in msg:
+                            # Respond to keepalive ping
+                            await websocket.send_text(json.dumps({"type": "pong"}))
+                except json.JSONDecodeError:
+                    # Ignore malformed JSON (could be plain text keepalive)
+                    pass
+            except asyncio.TimeoutError:
+                # No message received in 5 minutes, connection might be stale
+                logger.warning("WebSocket timeout - no message received in 5 minutes")
+                break
     except WebSocketDisconnect:
+        logger.info("WebSocket disconnected normally")
+    except Exception as e:
+        logger.error(f"WebSocket error: {type(e).__name__}: {str(e)}")
+    finally:
         manager.disconnect(websocket)
+        logger.info(f"WebSocket cleaned up. Total connections: {len(manager.active_connections)}")
 
 
 @app.get("/health")
@@ -378,6 +414,7 @@ async def list_files(folder: Optional[str] = None):
 
 @app.post("/analyze-data")
 async def analyze_data(
+    request: Request,
     file: UploadFile = File(...),
     question: str = Form(...),
     selected_agents: Optional[str] = Form(None),
@@ -396,6 +433,26 @@ async def analyze_data(
     Returns:
         Complete analysis results with agent outputs and report
     """
+    # SECURITY: Rate limiting check
+    if settings.RATE_LIMIT_ENABLED and RATE_LIMITER_AVAILABLE:
+        client_ip = request.client.host if request.client else "unknown"
+        is_allowed, remaining, reset_time = await check_rate_limit(client_ip)
+
+        if not is_allowed:
+            logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "error": "Rate limit exceeded",
+                    "message": f"Too many analysis requests. Please wait before trying again.",
+                    "retry_after": int((reset_time - datetime.utcnow()).total_seconds()),
+                    "limit": settings.RATE_LIMIT_MAX_REQUESTS,
+                    "window": settings.RATE_LIMIT_WINDOW_SECONDS
+                }
+            )
+
+        logger.info(f"Rate limit check passed for IP: {client_ip}, remaining: {remaining}")
+
     analysis_record = None
     start_time = datetime.utcnow()
 

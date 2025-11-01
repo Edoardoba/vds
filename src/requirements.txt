@@ -41,6 +41,7 @@ psycopg==3.2.0   # plain psycopg to avoid the psycopg-binary lookup issue
 httpx==0.28.1
 
 # Lang ecosystem (all 0.3.x, mutually compatible)
+langgraph==0.2.34  # CRITICAL: Multi-agent workflow orchestration
 langchain==0.3.15
 langchain-core==0.3.79
 langchain-anthropic==0.3.3

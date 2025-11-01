@@ -195,6 +195,16 @@ class CachedAnalysis(Base):
     # Cache statistics
     time_saved_ms = Column(Integer, nullable=False, default=0)  # Total time saved by cache hits
 
+    # Composite indexes for optimized cache lookups
+    __table_args__ = (
+        # Fast cache cleanup queries (find expired entries)
+        Index('idx_expires_at_created', 'expires_at', 'created_at'),
+        # Fast cache hit queries (lookup by data hash + question prefix)
+        Index('idx_data_hash_created', 'data_hash', 'created_at'),
+        # Analytics queries (most accessed caches)
+        Index('idx_access_count_last_accessed', 'access_count', 'last_accessed'),
+    )
+
     def to_dict(self):
         """Convert to dictionary for API responses"""
         return {
@@ -234,6 +244,16 @@ class AgentCachedResult(Base):
     last_accessed = Column(DateTime, nullable=False, default=datetime.utcnow)
     access_count = Column(Integer, nullable=False, default=0)
     expires_at = Column(DateTime, nullable=True, index=True)
+
+    # Composite indexes for optimized per-agent cache lookups
+    __table_args__ = (
+        # Fast per-agent cache lookup (most common query)
+        Index('idx_data_hash_agent_name', 'data_hash', 'agent_name'),
+        # Fast cache cleanup for expired agent results
+        Index('idx_agent_expires_at', 'agent_name', 'expires_at'),
+        # Analytics: most frequently cached agents
+        Index('idx_agent_access_count', 'agent_name', 'access_count'),
+    )
 
     def to_dict(self):
         return {
